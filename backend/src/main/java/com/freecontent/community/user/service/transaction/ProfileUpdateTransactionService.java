@@ -4,20 +4,24 @@ import com.freecontent.community.common.error.*;
 import com.freecontent.community.user.dto.*;
 import com.freecontent.community.user.entity.UserAccount;
 import com.freecontent.community.user.mapper.*;
+import com.freecontent.community.media.mapper.MediaAssetMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.*;
 import java.util.Objects;
+import java.util.List;
 
 @Service
 public class ProfileUpdateTransactionService {
     private final UserAccountMapper users;
     private final UserRoleMapper roles;
+    private final MediaAssetMapper assets;
     private final Clock clock;
 
-    public ProfileUpdateTransactionService(UserAccountMapper users, UserRoleMapper roles, Clock clock) {
+    public ProfileUpdateTransactionService(UserAccountMapper users, UserRoleMapper roles, MediaAssetMapper assets, Clock clock) {
         this.users = users;
         this.roles = roles;
+        this.assets = assets;
         this.clock = clock;
     }
 
@@ -32,8 +36,13 @@ public class ProfileUpdateTransactionService {
         }
         if (!Objects.equals(patch.getExpectedVersion(), current.getVersion())) throw conflict(current.getVersion());
         if (patch.hasAvatarAssetId() && patch.getAvatarAssetId() != null) {
-            // 素材服务尚未接入；不绕过本人、AVATAR用途及READY状态的校验。
-            throw new BusinessException(ErrorCode.DEPENDENCY_UNAVAILABLE, "头像素材服务暂不可用");
+            // 账号→目标素材；共享锁保持到资料写入提交，防止校验后素材状态被并发改变。
+            var avatar = assets.findOwnedForShare(patch.getAvatarAssetId(), userId);
+            if (avatar == null) throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND);
+            if (!"AVATAR".equals(avatar.getScene())) throw new BusinessException(ErrorCode.VALIDATION_ERROR,
+                    "素材用途不匹配", null, null,
+                    List.of(ProblemDetailResponse.Violation.body("avatarAssetId", "头像必须使用AVATAR用途的素材")));
+            if (!"READY".equals(avatar.getState())) throw new BusinessException(ErrorCode.MEDIA_NOT_READY);
         }
         boolean changed = (patch.hasDisplayName() && !Objects.equals(patch.getDisplayName(), current.getDisplayName()))
                 || (patch.hasBio() && !Objects.equals(patch.getBio(), current.getBio()))

@@ -40,7 +40,7 @@ public class UserContentListServiceImpl implements UserContentListService {
         var query = cursors.openForAuthor(cursor, size, userId, scope);
         limiter.acquire(viewer == null ? null : viewer.user().id(), sourceIp);
         try {
-            return transactions.list(query);
+            return transactions.list(query,viewer==null?null:viewer.user().id());
         } catch (DataAccessException | TransactionException ex) {
             throw new BusinessException(ErrorCode.DEPENDENCY_UNAVAILABLE, "作者公开内容列表数据服务暂不可用");
         }

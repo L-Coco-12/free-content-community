@@ -34,7 +34,7 @@ public class PublicContentListServiceImpl implements PublicContentListService {
         String actor = viewer == null ? null : viewer.user().id();
         var query = cursors.open(cursor, size, type, tagId, actor == null ? "anonymous" : "user:" + actor);
         limiter.acquire(actor, sourceIp);
-        try { return transactions.list(query); }
+        try { return transactions.list(query,actor); }
         catch (DataAccessException | TransactionException ex) {
             throw new BusinessException(ErrorCode.DEPENDENCY_UNAVAILABLE, "公开内容列表数据服务暂不可用");
         }

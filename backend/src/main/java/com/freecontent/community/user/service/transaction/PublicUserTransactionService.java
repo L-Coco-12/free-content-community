@@ -5,6 +5,7 @@ import com.freecontent.community.common.error.ErrorCode;
 import com.freecontent.community.content.service.read.PublicContentCountReader;
 import com.freecontent.community.user.dto.PublicUserView;
 import com.freecontent.community.user.service.read.PublicUserReader;
+import com.freecontent.community.user.service.read.PublicAvatarUrlFactory;
 import java.time.ZoneOffset;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
@@ -15,17 +16,19 @@ import org.springframework.transaction.annotation.Transactional;
 public class PublicUserTransactionService {
     private final PublicUserReader users;
     private final PublicContentCountReader contents;
+    private final PublicAvatarUrlFactory avatars;
 
-    public PublicUserTransactionService(PublicUserReader users, PublicContentCountReader contents) {
+    public PublicUserTransactionService(PublicUserReader users, PublicContentCountReader contents, PublicAvatarUrlFactory avatars) {
         this.users = users;
         this.contents = contents;
+        this.avatars = avatars;
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public PublicUserView read(String userId) {
         var profile = users.read(userId);
         if (profile == null) throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND);
-        return new PublicUserView(profile.id(), profile.displayName(), profile.bio(), null,
+        return new PublicUserView(profile.id(), profile.displayName(), profile.bio(), avatars.url(profile.id(),profile.avatarAssetId()),
                 profile.createdAt().toInstant(ZoneOffset.UTC), contents.countByAuthor(profile.id()), 0);
     }
 }

@@ -6,6 +6,18 @@
 
 ## 接口行为与约定
 
+从终结修订继续编辑，使用[从历史修订新建草稿](content-draft-creation.md)：复制为新 DRAFT，保留历史和原公开稿；已有工作修订时拒绝创建。
+
+停止公开展示，使用[作者撤回公开内容](content-publication-withdrawal.md)：保留历史发布稿，使当前待审失效，普通草稿保留；已不公开的重复请求无副作用返回 204。
+
+恢复最近批准稿的公开展示，使用[重新公开](content-republication.md)：从 WITHDRAWN 恢复，复核当前公开条件，保留新草稿与待审链；同版重复成功不增加业务版本或事件。
+
+删除整篇本人内容，使用[移入回收站](content-deletion.md)：lifecycle 改为 DELETED、原发布状态保留，终结待审链，保留普通草稿及历史；已删除重复请求无副作用返回 204。
+
+从回收站继续创作，使用[恢复作品](content-restoration.md)：恢复为 ACTIVE，有历史发布稿则 WITHDRAWN，TAKEN_DOWN 保留；不自动公开，不复活旧审核。成功幂等重放返回首次工作区快照。
+
+运营[强制下架](content-take-down.md)会终结所有当前工作稿（包括 DRAFT），保留 TAKEN_DOWN；作者须新建整改修订并重审，删除、恢复或重发旧稿均不能解除。
+
 ### 创建内容及首个草稿
 
 ```http
@@ -142,7 +154,7 @@ COUNT、页面记录、所有工作/发布修订和引用处于同一readOnly/RE
 列表和详情共用app.content.query及现有{content-query}作用域，来源120次/分钟、用户60次/分钟，配置可覆盖；重复查询和空页都计数，与创建和草稿保存额度隔离。
 429提供正整数Retry-After；Redis无法确认额度或MySQL故障返回503，不泄露内部连接和SQL信息。来源沿用Tomcat可信代理解析后的request.getRemoteAddr。
 扩展既有查询Controller、Service、事务与Mapper，新增WorkspacePage；不新增表、迁移、依赖或限流配置。固定版本错误契约已覆盖listMyContents，合计24个接口，原始OpenAPI未修改。
-本接口读取回收站状态，删除及恢复接口仍待后续实现。
+本接口读取回收站状态；移入回收站和恢复作品均已实现，分别通过对应写入接口改变生命周期。
 
 2026-11-09验证：按TDD执行红、绿、重构后，`mvn clean verify`通过1070项测试
 （481项单元/Web、589项集成），0失败、0错误、0跳过，打包成功。新增63项本人列表专项检查，并补充认证映射和全局契约检查。
@@ -235,10 +247,10 @@ CONTENT_MEDIA_PREVIEW_READ_URL_TTL_SECONDS、CONTENT_MEDIA_PREVIEW_IP_PER_MINUTE
 2. `content/workspace/service/ContentWorkspaceService.java`与`service/impl/ContentWorkspaceServiceImpl.java`新增listMyContents，校验分页和枚举，默认ACTIVE，复用详情查询额度与故障转换。
 3. `content/workspace/service/transaction/ContentWorkspaceTransactionService.java`新增list：同一只读REPEATABLE_READ快照复核资格、COUNT、分页及批量加载修订/引用，与详情共用投影和一致性检查；空指针保留null。
 4. `content/mapper/ContentReadMapper.java`：COUNT和页面SQL复用本人及筛选条件，固定updated_at/id倒序；批量读取页内工作稿和发布稿，限制修订所属contentId，引用按position排序，避免N+1查询。
-5. `content/workspace/dto/WorkspacePage.java`返回items/page/pageSize/total，items复用ContentWorkspace；BigInteger页码超末页直接返回空页，不加契约外上限。
+5. `content/dto/WorkspacePage.java`返回items/page/pageSize/total，items复用ContentWorkspace；BigInteger页码超末页直接返回空页，不加契约外上限。该分页投影与后台内容列表共享，本人范围及默认 ACTIVE 规则保持不变。
 6. `content/controller/ContentListEndpointTest`覆盖参数边界、重复/未知字段与计数前拒绝；`content/service/ContentListFlowIT`覆盖真实HTTP/MySQL/Redis、回收站和组合筛选、稳定排序、批量引用、权限、并发快照、故障与共享额度。
 
-复用app.content.query、V10与响应工作区模型；不新增配置组、依赖或迁移。列表只读取回收站状态，删除恢复仍待后续用例实现。
+复用app.content.query、V10与响应工作区模型；不新增配置组、依赖或迁移。列表只读取回收站状态；状态写入见移入回收站和恢复作品用例。
 
 ### 本人修订媒体预览怎样阅读
 

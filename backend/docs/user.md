@@ -14,7 +14,8 @@
 
 成功返回 ApiResponse<PublicUser>，仅包含 id、displayName、bio、avatarUrl、createdAt、
 publishedContentCount、followerCount 七个公开字段，不读取或返回邮箱、密码、角色、账号权限、
-会话或版本。READY 头像绑定与关注关系尚未实现，沿用 avatarUrl=null、followerCount=0；不签名媒体地址或调用 MinIO。
+会话或版本。READY头像绑定及[稳定读取地址](user-avatar-access.md)已实现，无有效头像返回avatarUrl=null。
+资料查询不签名或访问MinIO，图片请求单独检查并302跳转。关注关系尚未实现，followerCount仍为0。
 
 路径 ID 只允许 1～64 位字母、数字、下划线和短横线，非法返回 422，violations 定位 path/userId。
 不接受任何查询参数，未定义及重复参数返回 400 MALFORMED_REQUEST。
@@ -100,14 +101,14 @@ WRITE_BLOCKED允许查询，返回canCreate=false；DISABLED返回403 ACCOUNT_RE
 | --- | --- | --- | --- |
 | displayName | 保持原值 | 422 | 非空昵称，1～40个Unicode字符 |
 | bio | 保持原值 | 422 | 最多500个Unicode字符，空字符串清空简介 |
-| avatarAssetId | 保持原值 | 清空头像 | 本期尚不开放非空ID绑定，返回503 |
+| avatarAssetId | 保持原值 | 清空头像 | 绑定本人READY的AVATAR素材 |
 
 DTO通过JSON Setter保留字段存在标记，拒绝客户端篡改内部标记，不将数字、数组或对象静默转换为资料字符串。
 昵称和简介使用Unicode码点计数，不静默截断或trim。只提交expectedVersion或不符合字段校验的输入返回422。
 expectedVersion必须为1～2147483647的JSON整数；整数值越界返回422及body/expectedVersion提示，字符串、小数等类型错误仍返回400。
 
 UserProfileService与事务、DTO、配置、限流和校验都位于user模块。
-事务锁定目标账号并再次检查认证版本、ACTIVE状态及资料版本，然后通过MyBatis if/set生成动态更新，
+事务锁定目标账号并再次检查认证版本、ACTIVE状态及资料版本；提供非空头像时，按账号→目标素材顺序持有共享素材锁并校验归属、AVATAR用途与READY状态，然后通过MyBatis if/set生成动态更新，
 SQL列由后端白名单固定，值使用参数绑定；WHERE包含用户ID、expectedVersion、认证版本及ACTIVE状态。
 版本冲突返回409 RESOURCE_VERSION_CONFLICT及currentVersion，客户端重新读取并确认后再保存，不自动覆盖。
 对本期已支持且通过校验的字段，值均相同时返回200和当前资料，version与updated_at不变；过时版本仍返回409。
@@ -116,9 +117,12 @@ SQL列由后端白名单固定，值使用参数绑定；WHERE包含用户ID、e
 接口返回数据库更新后的资料，而非认证阶段的旧CurrentUser快照。WRITE_BLOCKED或DISABLED不能修改资料。
 认证状态在过滤器验证后发生变化时，事务复核会拒绝写入；依赖故障返回503，响应仍遵循Problem Details及no-store规范。
 
-资料编辑阶段先支持清空头像；后续新增的素材登记及创建上传会话见下文。avatarAssetId:null和省略头像均可正常处理；
-所有非空头像ID请求返回503 DEPENDENCY_UNAVAILABLE，包括同时提交昵称/简介的请求，整次修改不发生部分保存。
-后续素材模块就绪后，再接入头像归属本人、AVATAR用途与READY状态的校验，不能绕过这些条件直接绑定ID。
+头像绑定已接通[图片自动校验通路](media-processing.md)。客户端上传AVATAR图片，完成上传并等待任务SUCCEEDED、素材READY后，
+提交最新expectedVersion和avatarAssetId即可保存。素材不存在或不属于本人统一404 RESOURCE_NOT_FOUND；
+本人素材用途不匹配返回422 VALIDATION_ERROR及body/avatarAssetId提示；尚未READY（含FAILED）返回409 MEDIA_NOT_READY。
+校验失败时昵称、简介、头像及版本均保持原值，不部分保存。同值头像仍校验目标素材，合法同值不递增版本；旧版本优先返回版本冲突。
+avatarAssetId:null清空，省略保持原值；清空或替换不会删除旧素材，也不会改变素材状态，仍可复用本人READY头像。
+保存只绑定已校验素材ID，不重新下载或HEAD，不签发地址，不扩展CurrentUser响应；公开avatarUrl展示见[头像读取](user-avatar-access.md)。
 
 app.user.profile-update配置：同来源每分钟30次、同用户每小时20次，独立{profile-update}配额键。
 环境变量为PROFILE_UPDATE_IP_PER_MINUTE_LIMIT、PROFILE_UPDATE_USER_HOURLY_LIMIT和PROFILE_UPDATE_REDIS_KEY_PREFIX，
@@ -175,11 +179,12 @@ WRITE_BLOCKED可以查询，canCreate=false；DISABLED返回403，无效或已�
    [UserProfileServiceImpl](../src/main/java/com/freecontent/community/user/service/impl/UserProfileServiceImpl.java)：
    从认证上下文确定目标账号，并执行独立提交限流。
 4. [ProfileUpdateTransactionService](../src/main/java/com/freecontent/community/user/service/transaction/ProfileUpdateTransactionService.java)：
-   锁定账号，复核认证版本、ACTIVE状态及expectedVersion；修改后重新读取账号和角色，不能返回写入前的上下文快照。
+   锁定账号，复核认证版本、ACTIVE状态及expectedVersion；非空头像通过MediaAssetMapper.findOwnedForShare在同一事务中校验本人、用途及READY。
+   修改后重新读取账号和角色，不能返回写入前的上下文快照。
 5. [UserAccountMapper](../src/main/java/com/freecontent/community/user/mapper/UserAccountMapper.java)的updateProfileFields方法：
    以if/set动态生成字段白名单内的SET，值使用参数绑定；WHERE同时限定用户、资料版本、认证版本及ACTIVE状态。
 
-本期支持昵称、简介和清空头像；省略字段保持原值，bio空字符串表示清空简介，avatarAssetId:null表示清空头像。
-头像素材校验尚未接入，所有非空头像ID返回503，整个请求不发生部分保存；后续接入本人READY的AVATAR素材校验后再开放绑定。
+支持昵称、简介、绑定和清空头像；省略字段保持原值，bio空字符串表示清空简介，avatarAssetId:null表示清空头像。
+非空头像要求本人READY的AVATAR素材，整个请求不发生部分保存。ProfileUpdateFlowIT覆盖真实上传、自动校验及头像保存完整链路。
 支持字段通过校验且值未变化时，返回200且不修改version或updated_at；版本过时始终409 RESOURCE_VERSION_CONFLICT，并返回currentVersion。
 实际修改递增资料version，不修改authVersion、密码或会话有效期。配置见app.user.profile-update，默认来源30次/分钟、用户20次/小时。

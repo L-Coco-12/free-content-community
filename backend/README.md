@@ -62,8 +62,9 @@ mvn spring-boot:run
 | 账号与资料 | [账号与资料](docs/user.md) |
 | 上传与媒体 | [上传与媒体](docs/media.md) |
 | 标签 | [标签](docs/tag.md) |
-| 内容创作与工作区 | [内容创作与工作区](docs/content-workspace.md) |
+| 内容创作与工作区 | [工作区](docs/content-workspace.md) · [历史修订新草稿](docs/content-draft-creation.md) · [撤回](docs/content-publication-withdrawal.md) · [重新公开](docs/content-republication.md) · [移入回收站](docs/content-deletion.md) · [恢复作品](docs/content-restoration.md) |
 | 内容审核 | [内容审核](docs/content-review.md) |
+| 运营内容 | [后台全部状态内容列表](docs/content-admin-list.md) · [指定内容工作区](docs/content-admin-detail.md) · [强制下架](docs/content-take-down.md) |
 | 已发布内容浏览 | [公开详情](docs/content-browse.md) · [公开列表](docs/content-list.md) · [作者作品](docs/content-author-list.md) · [媒体取址](docs/content-media-access.md) |
 | 接口错误响应 | [接口错误响应](docs/api-errors.md) |
 | 开发与验证 | [开发与验证](docs/development.md) |
@@ -75,11 +76,11 @@ mvn spring-boot:run
 - API 以原始 `openapi.json` 为准，本文档解释实现行为；详细业务约定见上表。
 - 成功响应统一封装，204 无响应体；失败使用 RFC 9457 Problem Details。
 - 时间使用 UTC；业务配置及环境变量保持独立，按模块统一注册。
-- Flyway 已执行的 V1～V17 不得改写或删除，后续变化新增迁移。
+- Flyway 已执行的 V1～V24 不得改写或删除，后续变化新增迁移。
 - `mvn test` 运行单元/Web 测试；`mvn clean verify` 还运行真实 MySQL、Redis、MinIO 集成测试。
 - 集成测试必须串行；静默加载 `infra/.env` 后关闭邮件投递及上传清理，再执行验证。
 
 ## 已实现与后续范围
 
-认证、当前账号资料、公开个人主页、作者公开作品列表、公开媒体取址、标签、P0 图片 SINGLE 上传、内容工作区及审核提交/查询/决定/撤销、已发布内容详情和公开列表已实现。
+认证、当前账号资料、公开个人主页、作者公开作品列表、公开媒体取址、标签、P0 图片 SINGLE 上传、内容工作区、从历史修订创建新草稿、作者主动撤回公开内容及审核提交/查询/决定/撤销、已发布内容详情和公开列表已实现。
 媒体校验 worker 与 READY 推进、视频/分片、完整修订历史、删除恢复、Outbox 投递与消费尚待实现。

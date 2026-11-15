@@ -12,9 +12,10 @@ public class PublicUserOpenApiConfiguration {
     public OpenApiCustomizer optionalPublicUserAuthentication() {
         return api -> {
             if (api.getPaths() == null) return;
-            var path = api.getPaths().get("/api/v1/users/{userId}");
-            if (path != null && path.getGet() != null) {
-                path.getGet().setSecurity(List.of(new SecurityRequirement(), new SecurityRequirement().addList("bearerAuth")));
+            for(String uri:List.of("/api/v1/users/{userId}","/api/v1/users/{userId}/avatar")) {
+                var path = api.getPaths().get(uri);
+                if (path != null && path.getGet() != null)
+                    path.getGet().setSecurity(List.of(new SecurityRequirement(), new SecurityRequirement().addList("bearerAuth")));
             }
         };
     }

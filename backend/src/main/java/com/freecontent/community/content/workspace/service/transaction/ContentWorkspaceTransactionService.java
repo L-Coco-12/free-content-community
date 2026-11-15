@@ -5,7 +5,7 @@ import com.freecontent.community.user.model.AccountSnapshot;
 import com.freecontent.community.auth.security.SessionPrincipal;
 import com.freecontent.community.common.error.*;
 import com.freecontent.community.content.dto.ContentWorkspace;
-import com.freecontent.community.content.workspace.dto.WorkspacePage;
+import com.freecontent.community.content.dto.WorkspacePage;
 import com.freecontent.community.content.mapper.ContentReadMapper;
 import com.freecontent.community.content.service.read.ContentWorkspaceReader;
 import com.freecontent.community.user.model.UserRole;

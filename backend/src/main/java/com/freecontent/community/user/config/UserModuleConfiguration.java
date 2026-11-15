@@ -6,5 +6,5 @@ import org.springframework.context.annotation.Configuration;
 /** 模块内的参数统一注册；各业务配置分组与校验保持独立。 */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties({PasswordChangeProperties.class,
-        ProfileUpdateProperties.class, PublicUserQueryProperties.class})
+        ProfileUpdateProperties.class, PublicUserQueryProperties.class, AvatarAccessProperties.class})
 public class UserModuleConfiguration { }

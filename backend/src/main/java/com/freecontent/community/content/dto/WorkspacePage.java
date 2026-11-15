@@ -1,6 +1,5 @@
-package com.freecontent.community.content.workspace.dto;
+package com.freecontent.community.content.dto;
 
-import com.freecontent.community.content.dto.ContentWorkspace;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.math.BigInteger;
 import java.util.List;

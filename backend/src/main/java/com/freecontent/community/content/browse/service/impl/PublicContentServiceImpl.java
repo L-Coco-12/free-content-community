@@ -29,7 +29,7 @@ public class PublicContentServiceImpl implements PublicContentService {
         }
         limiter.acquire(viewer == null ? null : viewer.user().id(), sourceIp);
         try {
-            return transactions.read(contentId);
+            return transactions.read(contentId,viewer==null?null:viewer.user().id());
         } catch (DataAccessException | TransactionException ex) {
             throw new BusinessException(ErrorCode.DEPENDENCY_UNAVAILABLE, "公开内容查询数据服务暂不可用");
         }

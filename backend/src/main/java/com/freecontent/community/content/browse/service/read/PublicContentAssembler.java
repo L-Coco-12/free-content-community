@@ -6,9 +6,11 @@ import com.freecontent.community.content.browse.mapper.PublicContentMapper;
 import com.freecontent.community.content.browse.mapper.PublicContentMapper.PublishedRow;
 import com.freecontent.community.content.browse.service.ContentSummary;
 import com.freecontent.community.content.model.ContentKind;
+import com.freecontent.community.content.model.persistence.ContentLikeState;
 import com.freecontent.community.tag.dto.TagView;
 import com.freecontent.community.user.dto.PublicUserView;
 import com.freecontent.community.user.model.PublicUserProfile;
+import com.freecontent.community.user.service.read.PublicAvatarUrlFactory;
 import org.springframework.stereotype.Component;
 import java.time.ZoneOffset;
 import java.util.*;
@@ -17,7 +19,8 @@ import java.util.*;
 @Component
 public class PublicContentAssembler {
     private final ContentSummary summary;
-    public PublicContentAssembler(ContentSummary summary) { this.summary = summary; }
+    private final PublicAvatarUrlFactory avatars;
+    public PublicContentAssembler(ContentSummary summary, PublicAvatarUrlFactory avatars) { this.summary = summary; this.avatars = avatars; }
 
     public void requirePublicRevision(PublishedRow row) {
         if (row == null || !"ACTIVE".equals(row.lifecycle()) || !"PUBLISHED".equals(row.publicationStatus())) throw missing();
@@ -63,13 +66,13 @@ public class PublicContentAssembler {
         if (author == null || author.createdAt() == null || author.displayName() == null || author.bio() == null) throw unavailable();
     }
 
-    public PublicContentView content(PublishedRow row, MediaReferences media, List<TagView> tags, PublicUserProfile author, long count) {
+    public PublicContentView content(PublishedRow row, MediaReferences media, List<TagView> tags, PublicUserProfile author, long count, ContentLikeState likes, boolean viewerHasBookmarked) {
         requireAuthor(author);
-        var profile = new PublicUserView(author.id(), author.displayName(), author.bio(), null, author.createdAt().toInstant(ZoneOffset.UTC), count, 0);
-        // 保留已确认的互动/头像边界；正文只用于详情及服务端摘要，不进入列表卡片。
+        var profile = new PublicUserView(author.id(), author.displayName(), author.bio(), avatars.url(author.id(),author.avatarAssetId()), author.createdAt().toInstant(ZoneOffset.UTC), count, 0);
+        // 正文只用于详情及服务端摘要，不进入列表卡片；头像仅生成稳定地址，不访问存储。
         return new PublicContentView(row.id(), row.kind(), row.title(), summary.summarize(row.bodyMarkdown()), profile,
                 media.cover(), tags, row.firstPublishedAt().toInstant(ZoneOffset.UTC), row.publishedAt().toInstant(ZoneOffset.UTC),
-                row.publishedRevisionId(), 0, 0, false, false, row.bodyMarkdown(), media.images(), media.video());
+                row.publishedRevisionId(), likes.likeCount(), 0, likes.viewerHasLiked(), viewerHasBookmarked, row.bodyMarkdown(), media.images(), media.video());
     }
 
     private BusinessException missing() { return new BusinessException(ErrorCode.RESOURCE_NOT_FOUND); }

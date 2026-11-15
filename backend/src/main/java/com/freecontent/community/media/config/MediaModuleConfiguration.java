@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Configuration;
 /** 模块内的参数统一注册；各业务配置分组与校验保持独立。 */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties({MediaAssetQueryProperties.class,
+        MediaProcessingProperties.class,
         MediaTaskQueryProperties.class,
         StorageProperties.class,
         UploadCancellationProperties.class,

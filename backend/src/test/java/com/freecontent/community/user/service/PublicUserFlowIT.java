@@ -110,6 +110,23 @@ class PublicUserFlowIT {
     }
 
     @Test
+    void currentReadyAvatarUsesTheSameStableUrlInTheProfileAndPublishedAuthors() throws Exception {
+        var author=author(); String avatar=asset(author);
+        jdbc.update("UPDATE media_asset SET scene='AVATAR' WHERE id=?",avatar);
+        jdbc.update("UPDATE app_user SET avatar_asset_id=? WHERE id=?",avatar,author.getId());
+        var content=published(author);
+        String expected="http://127.0.0.1:"+port+"/api/v1/users/"+author.getId()+"/avatar?assetId="+avatar;
+        var profile=get(author.getId(),null);
+        assertEquals(200,profile.statusCode(),profile.body());
+        assertEquals(expected,JsonPath.read(profile.body(),"$.data.avatarUrl"));
+        for(String path:List.of("/api/v1/contents/"+content.content(),"/api/v1/users/"+author.getId()+"/contents")) {
+            var response=client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+path)).GET().build(),HttpResponse.BodyHandlers.ofString());
+            assertEquals(200,response.statusCode(),response.body());
+            assertEquals(expected,JsonPath.read(response.body(),path.endsWith("/contents")?"$.data.items[0].author.avatarUrl":"$.data.author.avatarUrl"));
+        }
+    }
+
+    @Test
     void publishedCountIncludesOnlyTheAuthorsCurrentlyVisiblePublishedRevisions() throws Exception {
         var author = author();
         published(author);

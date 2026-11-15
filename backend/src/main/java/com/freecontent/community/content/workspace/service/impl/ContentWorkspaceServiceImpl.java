@@ -3,7 +3,7 @@ package com.freecontent.community.content.workspace.service.impl;
 import com.freecontent.community.auth.security.SessionPrincipal;
 import com.freecontent.community.common.error.*;
 import com.freecontent.community.content.dto.ContentWorkspace;
-import com.freecontent.community.content.workspace.dto.WorkspacePage;
+import com.freecontent.community.content.dto.WorkspacePage;
 import com.freecontent.community.content.workspace.service.ContentWorkspaceService;
 import com.freecontent.community.content.workspace.service.transaction.ContentWorkspaceTransactionService;
 import com.freecontent.community.content.ratelimit.ContentQueryRateLimiter;

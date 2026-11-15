@@ -13,11 +13,12 @@ src/main/java/com/freecontent/community/
 │   ├── model/AccountSnapshot.java
 │   ├── service/AccountAccessService.java
 │   └── service/impl/AccountAccessServiceImpl.java
-├── media/                        # 上传、完成、取消、任务与素材、存储读写签名
+├── media/                        # 上传、完成、取消、图片自动校验、任务与素材、存储读写签名
 ├── tag/                          # 标签管理及公开有效标签
 ├── content/
+│   ├── interaction/              # 点赞/取消、收藏写入、事务一致性与业务配额
 │   ├── browse/                   # 公开详情/全站及作者列表；可选认证、游标、批量投影及公开配额
-│   ├── workspace/                # 创建、草稿保存、本人工作区/列表、本人预览
+│   ├── workspace/                # 创建、草稿、本人查询/预览、撤回、重新公开、回收站删除/恢复
 │   │   ├── controller/
 │   │   ├── dto/
 │   │   ├── entity/
@@ -29,15 +30,19 @@ src/main/java/com/freecontent/community/
 │   │       └── transaction/
 │   ├── review/                   # 提交、本人反馈、后台查询/预览、审批与撤销
 │   │   └── controller/dto/entity/mapper/ratelimit/config/service/...
+│   ├── moderation/               # 运营查询/下架、处置、幂等、审计、独立配额
+│   │   └── controller/dto/entity/mapper/ratelimit/config/service/...
 │   ├── config/ContentModuleConfiguration.java
 │   │           ContentQueryProperties.java
-│   ├── dto/                      # 工作区及修订的共享 HTTP 投影
+│   ├── dto/                      # ContentWorkspace / WorkspacePage / 修订的共享 HTTP 投影
 │   ├── mapper/                   # ContentReadMapper / ContentLockMapper
 │   ├── model/ContentDraftData.java
 │   ├── model/persistence/        # 共享数据投影与数据库写入参数
 │   ├── ratelimit/ContentQueryRateLimiter.java
-│   ├── service/read/ContentWorkspaceReader.java
+│   ├── service/read/             # ContentWorkspaceReader / PublicContentVisibilityReader
 │   └── validation/               # 草稿结构及媒体/标签引用的共享校验
+├── notification/                 # 当前仅下架作者通知的事务内写入；尚无列表/已读 API
+│   └── model/mapper/service/ModerationNotificationWriter.java
 ├── common/
 │   ├── api/                      # 响应、请求标识、公共响应头及文档注解
 │   ├── error/                    # RFC 9457 错误响应
@@ -46,17 +51,19 @@ src/main/java/com/freecontent/community/
 └── config/                       # Web、JSON、MyBatis、OpenAPI、时钟、调度
 ```
 
-`content.workspace`、`content.review` 和 `content.browse` 是同一内容模块内部的职责分组，共用原有数据库和事务管理器。
+`content.workspace`、`content.review`、`content.browse` 和 `content.moderation` 是同一内容模块内部的职责分组，共用原有数据库和事务管理器。
 内容版本、修订指针和活动审核指针仍属于同一聚合，不因分包拆开事务。主业务 Service 继续采用接口与 `service.impl`。
 
 | 业务 | 行为约定与真实调用链 |
 | --- | --- |
 | 认证及会话 | [auth](docs/auth.md) |
-| 账号与资料 | [user](docs/user.md) |
-| 上传与媒体 | [media](docs/media.md) |
+| 账号与资料 | [user](docs/user.md) · [公开头像展示](docs/user-avatar-access.md) |
+| 上传与媒体 | [media](docs/media.md) · [图片自动校验](docs/media-processing.md) |
 | 标签 | [tag](docs/tag.md) |
-| 内容创作 | [workspace](docs/content-workspace.md) |
+| 内容创作 | [workspace](docs/content-workspace.md) · [历史修订新草稿](docs/content-draft-creation.md) · [撤回](docs/content-publication-withdrawal.md) · [重新公开](docs/content-republication.md) · [删除](docs/content-deletion.md) · [恢复](docs/content-restoration.md) |
 | 内容审核 | [review](docs/content-review.md) |
+| 内容互动 | [点赞](docs/content-like.md) · [取消点赞](docs/content-unlike.md) · [收藏](docs/content-bookmark.md) |
+| 运营内容 | [后台内容列表](docs/content-admin-list.md) · [后台内容详情](docs/content-admin-detail.md) · [强制下架](docs/content-take-down.md) |
 | 已发布内容浏览 | [详情](docs/content-browse.md) · [列表](docs/content-list.md) · [作者作品](docs/content-author-list.md) · [媒体取址](docs/content-media-access.md) |
 | 错误契约与 OpenAPI | [api-errors](docs/api-errors.md) |
 | 开发与兼容注意事项 | [development](docs/development.md) |
@@ -84,6 +91,9 @@ Controller 解析 HTTP、触发字段校验、调用业务接口并包装响应�
 共享 Reader 依赖中立的 `content.mapper.ContentReadMapper`。后台详情通过 `reader.findContent` 获取关联内容，
 审核提交使用 `reader.workspace(content)` 装配已加锁的内容，不调用创作组的工作区事务组件。
 `ContentLockMapper.lockOwned/lockRevision` 为草稿保存和提交审核提供原有行锁 SQL，锁顺序与事务边界保持不变。
+
+`PublicContentVisibilityReader` 在已授权的事务内复用 browse 的纯公开投影和引用锁查询，核对候选批准稿的当前公开条件。
+重新公开用例仍归 workspace；公开查询不反向依赖 workspace 或审核用例。实际重新公开与审计、Outbox 同事务提交，原有工作链保留。
 
 ## 模块协作与共享模型
 
@@ -132,7 +142,7 @@ Controller 解析 HTTP、触发字段校验、调用业务接口并包装响应�
 ## 资源与测试
 
 - `src/main/resources/application.yml`：应用配置与各模块参数。
-- `src/main/resources/db/migration/`：Flyway V1～V17，已执行迁移不得改写或删除。
+- `src/main/resources/db/migration/`：Flyway V1～V24，已执行迁移不得改写或删除。
 - `src/main/resources/redis/`：会话、专用限流及共用限流脚本。
 - `src/test/java/`：与生产业务模块及 workspace/review 分组对应。
 - `src/test/java/com/freecontent/community/content/support/ContentTestSupport.java`：内容测试关联构造与重复清理。
@@ -176,6 +186,23 @@ V16是本轮新增的公开排序索引，已执行迁移不得改写。
 作者游标将接口和目标作者加入 AES-GCM 用途及载荷绑定，禁止与全站列表互换；旧全站游标保持兼容。
 正常非空页仍为固定 5 次业务 SQL，作者资料同时用于存在性确认与投影。与公开详情、全站列表共享内容公开配额。
 V17 新增作者公开键集索引，已执行；V1～V17 不得改写。详细行为见 [作者作品](docs/content-author-list.md)。
+
+## 历史修订创建新草稿
+
+历史修订创建新草稿归 `content.workspace`，入口为 ContentDraftCreationService 及 service.impl。
+ContentDraftCreationTransactionService 分为租约领取与业务完成两次短事务；领取后使用不可变选择参数，
+成功重放先于配额和新执行状态检查，完成事务中原子提交新修订、有序关联、内容版本与成功快照。
+复用 AccountAccessService、ContentLockMapper、ContentWorkspaceReader 和已有草稿校验，不修改公开指针或审核流程。
+独立配额为 app.content.draft-creation，V18 新增独立幂等表，V1～V18 均已执行且不可改写。
+详细行为见[从历史修订创建新草稿](docs/content-draft-creation.md)。
+
+## 作者撤回公开内容
+
+作者撤回公开内容同属 content.workspace，PublicationWithdrawalService 与事务组件保持接口、实现分层。
+单个 READ_COMMITTED 事务按账号、内容、审核、修订顺序加锁，原子撤回公开、终结待审、保存审计和待发送事件。
+已是 WITHDRAWN/UNPUBLISHED 时先无副作用返回，不影响新审核；实际撤回才校验版本。
+独立配额 app.content.publication-withdrawal，重复 204 计数；V19 新增撤回审计与发布 Outbox，V20 补齐条件非空约束。
+V1～V20 均已执行且不得回写；不推进投递、消费或其他接口。详见[撤回公开](docs/content-publication-withdrawal.md)。
 
 ## 公开媒体读取授权
 

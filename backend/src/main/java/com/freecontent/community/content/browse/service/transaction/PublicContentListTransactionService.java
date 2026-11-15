@@ -8,6 +8,9 @@ import com.freecontent.community.content.browse.mapper.PublicContentMapper.*;
 import com.freecontent.community.content.browse.model.PublicContentListQuery;
 import com.freecontent.community.content.browse.service.read.PublicContentAssembler;
 import com.freecontent.community.user.service.read.PublicUserReader;
+import com.freecontent.community.content.service.read.ContentLikeReader;
+import com.freecontent.community.content.service.read.ContentBookmarkReader;
+import com.freecontent.community.content.model.persistence.ContentLikeState;
 import java.time.*;
 import java.util.*;
 import java.util.function.Function;
@@ -22,11 +25,13 @@ public class PublicContentListTransactionService {
     private final PublicUserReader users;
     private final PublicContentAssembler assembler;
     private final PublicContentCursor cursors;
-    public PublicContentListTransactionService(PublicContentMapper contents, PublicUserReader users, PublicContentAssembler assembler, PublicContentCursor cursors) {
-        this.contents = contents; this.users = users; this.assembler = assembler; this.cursors = cursors;
+    private final ContentLikeReader likes;
+    private final ContentBookmarkReader bookmarks;
+    public PublicContentListTransactionService(PublicContentMapper contents, PublicUserReader users, PublicContentAssembler assembler, PublicContentCursor cursors, ContentLikeReader likes, ContentBookmarkReader bookmarks) {
+        this.contents = contents; this.users = users; this.assembler = assembler; this.cursors = cursors; this.likes = likes; this.bookmarks = bookmarks;
     }
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
-    public ContentPageView list(PublicContentListQuery query) {
+    public ContentPageView list(PublicContentListQuery query, String viewerId) {
         var author = query.authorId() == null ? null : users.read(query.authorId());
         if (query.authorId() != null && author == null) throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND);
         var scanned = query.authorId() == null
@@ -50,6 +55,8 @@ public class PublicContentListTransactionService {
                 ? users.readAll(authors).stream().collect(Collectors.toMap(value -> value.id(), Function.identity()))
                 : Map.of(query.authorId(), author);
         var counts = contents.countVisibleByAuthors(authors).stream().collect(Collectors.toMap(AuthorCount::authorId, AuthorCount::visibleCount));
+        var likeStates = likes.readAll(rows.stream().map(PublishedRow::id).toList(),viewerId);
+        var bookmarkedIds = bookmarks.readAll(rows.stream().map(PublishedRow::id).toList(),viewerId);
         List<PublicContentSummaryView> items = new ArrayList<>();
         for (var row : rows) {
             // 只跳过纯投影识别的数据异常；所有数据库/批量读取故障均在循环外向上返回503。
@@ -57,7 +64,8 @@ public class PublicContentListTransactionService {
                 assembler.requirePublicRevision(row);
                 var media = assembler.media(row, assets.getOrDefault(row.revisionId(), List.of()));
                 var labels = assembler.tags(tags.getOrDefault(row.revisionId(), List.of()));
-                items.add(PublicContentSummaryView.from(assembler.content(row, media, labels, profiles.get(row.authorId()), counts.getOrDefault(row.authorId(), 0L))));
+                items.add(PublicContentSummaryView.from(assembler.content(row, media, labels, profiles.get(row.authorId()), counts.getOrDefault(row.authorId(), 0L),
+                        likeStates.getOrDefault(row.id(),ContentLikeState.none(row.id())),bookmarkedIds.contains(row.id()))));
             } catch (BusinessException ex) {
                 if (ex.errorCode() != ErrorCode.RESOURCE_NOT_FOUND && ex.errorCode() != ErrorCode.DEPENDENCY_UNAVAILABLE) throw ex;
             }

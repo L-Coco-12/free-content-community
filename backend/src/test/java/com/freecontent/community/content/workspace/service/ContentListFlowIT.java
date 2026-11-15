@@ -1,6 +1,6 @@
 package com.freecontent.community.content.workspace.service;
 
-import com.freecontent.community.content.workspace.dto.WorkspacePage;
+import com.freecontent.community.content.dto.WorkspacePage;
 import com.freecontent.community.content.support.ContentTestSupport;
 
 import com.freecontent.community.auth.LoginTestSupport;

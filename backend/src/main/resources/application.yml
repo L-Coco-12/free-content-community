@@ -60,6 +60,14 @@ mybatis-plus:
 
 app:
   content:
+    bookmark:
+      ip-per-minute-limit: ${CONTENT_BOOKMARK_IP_PER_MINUTE_LIMIT:120}
+      user-per-minute-limit: ${CONTENT_BOOKMARK_USER_PER_MINUTE_LIMIT:60}
+      redis-key-prefix: ${CONTENT_BOOKMARK_REDIS_KEY_PREFIX:fc:content:}
+    like:
+      ip-per-minute-limit: ${CONTENT_LIKE_IP_PER_MINUTE_LIMIT:120}
+      user-per-minute-limit: ${CONTENT_LIKE_USER_PER_MINUTE_LIMIT:60}
+      redis-key-prefix: ${CONTENT_LIKE_REDIS_KEY_PREFIX:fc:content:}
     public-media-access:
       read-url-ttl-seconds: ${CONTENT_PUBLIC_MEDIA_ACCESS_READ_URL_TTL_SECONDS:300}
       ip-per-minute-limit: ${CONTENT_PUBLIC_MEDIA_ACCESS_IP_PER_MINUTE_LIMIT:120}
@@ -72,6 +80,30 @@ app:
       ip-per-minute-limit: ${CONTENT_PUBLIC_QUERY_IP_PER_MINUTE_LIMIT:120}
       user-per-minute-limit: ${CONTENT_PUBLIC_QUERY_USER_PER_MINUTE_LIMIT:60}
       redis-key-prefix: ${CONTENT_PUBLIC_QUERY_REDIS_KEY_PREFIX:fc:content:}
+    take-down:
+      ip-per-minute-limit: ${CONTENT_TAKE_DOWN_IP_PER_MINUTE_LIMIT:60}
+      user-hourly-limit: ${CONTENT_TAKE_DOWN_USER_HOURLY_LIMIT:100}
+      redis-key-prefix: ${CONTENT_TAKE_DOWN_REDIS_KEY_PREFIX:fc:content:}
+    admin-query:
+      ip-per-minute-limit: ${CONTENT_ADMIN_QUERY_IP_PER_MINUTE_LIMIT:120}
+      user-per-minute-limit: ${CONTENT_ADMIN_QUERY_USER_PER_MINUTE_LIMIT:60}
+      redis-key-prefix: ${CONTENT_ADMIN_QUERY_REDIS_KEY_PREFIX:fc:content:}
+    restoration:
+      ip-per-minute-limit: ${CONTENT_RESTORATION_IP_PER_MINUTE_LIMIT:60}
+      user-hourly-limit: ${CONTENT_RESTORATION_USER_HOURLY_LIMIT:100}
+      redis-key-prefix: ${CONTENT_RESTORATION_REDIS_KEY_PREFIX:fc:content:}
+    deletion:
+      ip-per-minute-limit: ${CONTENT_DELETION_IP_PER_MINUTE_LIMIT:120}
+      user-per-minute-limit: ${CONTENT_DELETION_USER_PER_MINUTE_LIMIT:60}
+      redis-key-prefix: ${CONTENT_DELETION_REDIS_KEY_PREFIX:fc:content:}
+    publication-republish:
+      ip-per-minute-limit: ${CONTENT_PUBLICATION_REPUBLISH_IP_PER_MINUTE_LIMIT:120}
+      user-per-minute-limit: ${CONTENT_PUBLICATION_REPUBLISH_USER_PER_MINUTE_LIMIT:60}
+      redis-key-prefix: ${CONTENT_PUBLICATION_REPUBLISH_REDIS_KEY_PREFIX:fc:content:}
+    publication-withdrawal:
+      ip-per-minute-limit: ${CONTENT_PUBLICATION_WITHDRAWAL_IP_PER_MINUTE_LIMIT:120}
+      user-per-minute-limit: ${CONTENT_PUBLICATION_WITHDRAWAL_USER_PER_MINUTE_LIMIT:60}
+      redis-key-prefix: ${CONTENT_PUBLICATION_WITHDRAWAL_REDIS_KEY_PREFIX:fc:content:}
     review-cancellation:
       ip-per-minute-limit: ${CONTENT_REVIEW_CANCELLATION_IP_PER_MINUTE_LIMIT:120}
       user-per-minute-limit: ${CONTENT_REVIEW_CANCELLATION_USER_PER_MINUTE_LIMIT:60}
@@ -98,6 +130,10 @@ app:
       ip-per-minute-limit: ${CONTENT_MEDIA_PREVIEW_IP_PER_MINUTE_LIMIT:120}
       user-per-minute-limit: ${CONTENT_MEDIA_PREVIEW_USER_PER_MINUTE_LIMIT:60}
       redis-key-prefix: ${CONTENT_MEDIA_PREVIEW_REDIS_KEY_PREFIX:fc:content:}
+    draft-creation:
+      ip-per-minute-limit: ${CONTENT_DRAFT_CREATION_IP_PER_MINUTE_LIMIT:60}
+      user-hourly-limit: ${CONTENT_DRAFT_CREATION_USER_HOURLY_LIMIT:100}
+      redis-key-prefix: ${CONTENT_DRAFT_CREATION_REDIS_KEY_PREFIX:fc:content:}
     draft-save:
       ip-per-minute-limit: ${CONTENT_DRAFT_SAVE_IP_PER_MINUTE_LIMIT:120}
       user-per-minute-limit: ${CONTENT_DRAFT_SAVE_USER_PER_MINUTE_LIMIT:60}
@@ -136,6 +172,19 @@ app:
     bucket: ${MINIO_BUCKET:free-content}
     region: ${MINIO_REGION:us-east-1}
   media:
+    processing:
+      enabled: ${MEDIA_PROCESSING_ENABLED:true}
+      poll-delay-millis: ${MEDIA_PROCESSING_POLL_DELAY_MILLIS:1000}
+      lease-seconds: ${MEDIA_PROCESSING_LEASE_SECONDS:120}
+      max-attempts: ${MEDIA_PROCESSING_MAX_ATTEMPTS:3}
+      retry-base-seconds: ${MEDIA_PROCESSING_RETRY_BASE_SECONDS:5}
+      orphan-grace-seconds: ${MEDIA_PROCESSING_ORPHAN_GRACE_SECONDS:120}
+      max-width: ${MEDIA_PROCESSING_MAX_WIDTH:8192}
+      max-height: ${MEDIA_PROCESSING_MAX_HEIGHT:8192}
+      max-frame-pixels: ${MEDIA_PROCESSING_MAX_FRAME_PIXELS:25000000}
+      max-frames: ${MEDIA_PROCESSING_MAX_FRAMES:100}
+      max-total-pixels: ${MEDIA_PROCESSING_MAX_TOTAL_PIXELS:100000000}
+      decode-timeout-seconds: ${MEDIA_PROCESSING_DECODE_TIMEOUT_SECONDS:30}
     asset-query:
       ip-per-minute-limit: ${MEDIA_ASSET_QUERY_IP_PER_MINUTE_LIMIT:120}
       user-per-minute-limit: ${MEDIA_ASSET_QUERY_USER_PER_MINUTE_LIMIT:60}
@@ -178,6 +227,12 @@ app:
       max-part-count: ${MEDIA_MAX_PART_COUNT:10000}
       upload-url-ttl-seconds: ${MEDIA_UPLOAD_URL_TTL_SECONDS:600}
   user:
+    avatar-access:
+      read-url-ttl-seconds: ${USER_AVATAR_READ_URL_TTL_SECONDS:300}
+      ip-per-minute-limit: ${USER_AVATAR_IP_PER_MINUTE_LIMIT:120}
+      user-per-minute-limit: ${USER_AVATAR_USER_PER_MINUTE_LIMIT:60}
+      redis-key-prefix: ${USER_AVATAR_REDIS_KEY_PREFIX:fc:user:}
+      public-base-url: ${USER_AVATAR_PUBLIC_BASE_URL:}
     public-query:
       ip-per-minute-limit: ${USER_PUBLIC_QUERY_IP_PER_MINUTE_LIMIT:120}
       user-per-minute-limit: ${USER_PUBLIC_QUERY_USER_PER_MINUTE_LIMIT:60}

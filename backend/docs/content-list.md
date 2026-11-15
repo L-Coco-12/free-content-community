@@ -72,7 +72,7 @@ items 使用契约 ContentSummary，仅14个卡片字段，不包含正文、正
 - user的PublicUserReader/PublicUserMapper提供批量公开资料；不读取密码、邮箱或完整账号实体。
 - [PublicContentAssembler](../src/main/java/com/freecontent/community/content/browse/service/read/PublicContentAssembler.java)让列表与详情复用相同纯投影规则，禁止逐项调用详情Service。
 
-正常非空页面固定5次业务SQL：候选项、素材、标签、作者资料、作者数量；空候选页只执行候选查询。
+正常非空页面游客固定6次业务SQL：候选项、素材、标签、作者资料、作者数量、点赞统计；登录用户额外批量读取收藏关系，共7次。空候选页只执行候选查询。
 业务层每次最多取回limit+1个候选项；关联加载不产生N+1查询，数据库扫描量由筛选条件、数据分布和执行计划决定。
 V16新增idx_content_public_seek(lifecycle,publication_status,first_published_at,id)，支持按既定顺序反向扫描，
 生产SQL保留优化器选路。V1～V15不改写，V16执行后也不得修改；没有新增分页上下文表。
@@ -86,7 +86,7 @@ V16新增idx_content_public_seek(lifecycle,publication_status,first_published_at
 最终在源码哈希一致的 `.local-dev/structure-verification/list-final-v2/backend` 运行
 `mvn -B -ntp clean verify`：1854项全部通过，其中841项单元/Web、1013项真实集成，
 零失败、零错误、零跳过，打包成功；本轮新增49项检查。
-覆盖固定排序、快照上界、筛选/用户绑定、到期不续期、空页、异常过滤、固定5次批量查询、
+覆盖固定排序、快照上界、筛选/用户绑定、到期不续期、空页、异常过滤、游客6次/登录7次批量查询、
 翻页时撤回、同页并发快照、数据库故障和34个操作的错误契约。
 
 V16已成功执行，EXPLAIN确认索引支持反向扫描；V1～V15保持原内容。

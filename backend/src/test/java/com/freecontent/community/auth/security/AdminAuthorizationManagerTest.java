@@ -88,8 +88,35 @@ class AdminAuthorizationManagerTest {
                 new RequestAuthorizationContext(request));
     }
 
+    @ParameterizedTest @EnumSource(value = UserRole.class, names = {"MODERATOR", "ADMIN"})
+    void operatorsCanReadOnlyTheRegisteredContentCollection(UserRole role) {
+        assertTrue(decide(auth(role), "GET", "/api/v1/admin/contents").isGranted());
+        assertFalse(decide(auth(role), "POST", "/api/v1/admin/contents").isGranted());
+        assertFalse(decide(auth(role), "GET", "/api/v1/admin/contents/content_1/not-implemented").isGranted());
+        assertFalse(decide(auth(UserRole.USER), "GET", "/api/v1/admin/contents").isGranted());
+        assertFalse(decide(null, "GET", "/api/v1/admin/contents").isGranted());
+    }
+
     private Authentication auth(UserRole... roles) {
         return UsernamePasswordAuthenticationToken.authenticated("user", null,
                 Arrays.stream(roles).map(role -> new SimpleGrantedAuthority("ROLE_" + role.name())).toList());
+    }
+
+    @ParameterizedTest @EnumSource(value = UserRole.class, names = {"MODERATOR", "ADMIN"})
+    void operatorsCanReadContentDetailButUnimplementedMethodsAndChildrenRemainDenied(UserRole role) {
+        String path = "/api/v1/admin/contents/content_1";
+        assertTrue(decide(auth(role), "GET", path).isGranted());
+        assertFalse(decide(auth(UserRole.USER), "GET", path).isGranted()); assertFalse(decide(null, "GET", path).isGranted());
+        for (String method : java.util.List.of("POST", "PATCH", "DELETE")) assertFalse(decide(auth(role), method, path).isGranted());
+        assertFalse(decide(auth(role), "GET", path + "/media/asset_1/access").isGranted());
+    }
+
+    @ParameterizedTest @EnumSource(value = UserRole.class, names = {"MODERATOR", "ADMIN"})
+    void operatorsCanPostOnlyTheRegisteredTakeDownRoute(UserRole role) {
+        String path = "/api/v1/admin/contents/content_1/take-downs";
+        assertTrue(decide(auth(role), "POST", path).isGranted());
+        assertFalse(decide(auth(UserRole.USER), "POST", path).isGranted()); assertFalse(decide(null, "POST", path).isGranted());
+        assertFalse(decide(auth(role), "GET", path).isGranted()); assertFalse(decide(auth(role), "PUT", path).isGranted());
+        assertFalse(decide(auth(role), "POST", path + "/extra").isGranted());
     }
 }

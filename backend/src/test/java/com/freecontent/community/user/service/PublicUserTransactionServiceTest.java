@@ -13,7 +13,8 @@ import static org.mockito.Mockito.*;
 class PublicUserTransactionServiceTest {
     private final PublicUserReader users = mock(PublicUserReader.class);
     private final PublicContentCountReader contents = mock(PublicContentCountReader.class);
-    private final PublicUserTransactionService transactions = new PublicUserTransactionService(users, contents);
+    private final PublicUserTransactionService transactions = new PublicUserTransactionService(users, contents,
+            mock(com.freecontent.community.user.service.read.PublicAvatarUrlFactory.class));
 
     @Test
     void missingUserIs404AndDoesNotQueryContentCounts() {

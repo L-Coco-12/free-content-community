@@ -4,7 +4,7 @@ import com.freecontent.community.auth.LoginTestSupport;
 import com.freecontent.community.auth.config.SecurityConfiguration;
 import com.freecontent.community.auth.security.*;
 import com.freecontent.community.auth.service.SessionAuthenticationService;
-import com.freecontent.community.content.workspace.dto.WorkspacePage;
+import com.freecontent.community.content.dto.WorkspacePage;
 import com.freecontent.community.content.ratelimit.ContentQueryRateLimiter;
 import com.freecontent.community.content.workspace.service.impl.ContentWorkspaceServiceImpl;
 import com.freecontent.community.content.workspace.service.transaction.ContentWorkspaceTransactionService;

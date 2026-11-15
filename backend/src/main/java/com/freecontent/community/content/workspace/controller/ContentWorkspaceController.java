@@ -3,7 +3,7 @@ package com.freecontent.community.content.workspace.controller;
 import com.freecontent.community.auth.security.SessionPrincipal;
 import com.freecontent.community.common.api.*;
 import com.freecontent.community.content.dto.ContentWorkspace;
-import com.freecontent.community.content.workspace.dto.WorkspacePage;
+import com.freecontent.community.content.dto.WorkspacePage;
 import com.freecontent.community.content.workspace.service.ContentWorkspaceService;
 import com.freecontent.community.common.error.BusinessException;
 import com.freecontent.community.common.error.ProblemDetailResponse;

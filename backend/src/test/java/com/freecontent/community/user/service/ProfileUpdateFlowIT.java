@@ -9,8 +9,15 @@ import com.freecontent.community.user.config.ProfileUpdateProperties;
 import com.freecontent.community.user.entity.UserAccount;
 import com.freecontent.community.user.mapper.*;
 import com.freecontent.community.user.ratelimit.ProfileUpdateRateLimiter;
+import com.freecontent.community.media.entity.MediaAsset;
+import com.freecontent.community.media.mapper.MediaAssetMapper;
+import com.freecontent.community.media.config.StorageProperties;
+import com.freecontent.community.media.job.MediaProcessingWorker;
+import com.freecontent.community.media.storage.UploadObjectCleaner;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.*;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -27,7 +34,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = "app.auth.email-challenge.delivery-enabled=false")
+        properties = {"app.auth.email-challenge.delivery-enabled=false", "app.media.processing.enabled=false",
+                "app.media.upload-cleanup.enabled=false"})
 class ProfileUpdateFlowIT {
     private static final String PREFIX = "test:profile-update-it:" + UUID.randomUUID() + ":";
     private static final String PASSWORD = " ProfileUpdatePassword! ";
@@ -39,24 +47,56 @@ class ProfileUpdateFlowIT {
     @Autowired private RedisSessionStore sessions;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private JsonMapper json;
+    @Autowired private MediaAssetMapper assets;
+    @Autowired private MediaProcessingWorker processing;
+    @Autowired private StorageProperties storage;
+    @Autowired private UploadObjectCleaner cleaner;
     @MockitoSpyBean private SessionAuthenticationService authentication;
     private final List<String> fixtureIds = new ArrayList<>();
+    private final List<String> objectKeys = new ArrayList<>();
     private final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
 
     @DynamicPropertySource
     static void prefixes(DynamicPropertyRegistry registry) {
         registry.add("app.auth.login.redis-key-prefix", () -> PREFIX);
         registry.add("app.user.profile-update.redis-key-prefix", () -> PREFIX);
+        registry.add("app.media.upload-creation.redis-key-prefix", () -> PREFIX);
+        registry.add("app.media.upload-completion.redis-key-prefix", () -> PREFIX);
+        registry.add("app.user.public-query.redis-key-prefix", () -> PREFIX);
+        registry.add("app.user.avatar-access.redis-key-prefix", () -> PREFIX);
     }
 
     @AfterEach
-    void cleanup() {
+    void cleanup() throws Exception {
+        for(String owner:fixtureIds) objectKeys.addAll(jdbc.queryForList(
+                "SELECT o.object_key FROM media_processing_output o JOIN media_processing_task t ON t.id=o.task_id WHERE t.owner_id=?",String.class,owner));
+        for(String key:new HashSet<>(objectKeys)) cleaner.deleteObject(key);
         Set<String> keys = redis.keys(PREFIX + "*");
         if (keys != null && !keys.isEmpty()) redis.delete(keys);
         for (String id : fixtureIds) {
+            for(String table:List.of("media_upload_completion_request","media_processing_task","media_upload_cleanup",
+                    "media_upload_request","media_upload_session","media_asset"))
+                jdbc.update("DELETE FROM "+table+" WHERE owner_id=?",id);
             jdbc.update("DELETE FROM app_user_role WHERE user_id=?", id);
             users.deleteById(id);
         }
+    }
+
+    @Test
+    void ownReadyAvatarIsPersistedAndReturnedWithTheNewProfileVersion() throws Exception {
+        UserAccount account=fixture(); String token=login(account);
+        MediaAsset avatar=avatar(account.getId(),"AVATAR","READY");
+        var before=sessions.find(token);
+        var response=patch(token,body("expectedVersion",1,"avatarAssetId",avatar.getId(),"displayName","头像已保存"));
+        assertEquals(200,response.statusCode(),response.body());
+        assertEquals(avatar.getId(),JsonPath.read(response.body(),"$.data.avatarAssetId"));
+        assertEquals(2,(Integer)JsonPath.read(response.body(),"$.data.version"));
+        var saved=users.selectById(account.getId());
+        assertEquals(avatar.getId(),saved.getAvatarAssetId()); assertEquals("头像已保存",saved.getDisplayName());
+        assertEquals("原简介",saved.getBio()); assertEquals(1L,saved.getAuthVersion());
+        assertEquals(before.expiresAt(),sessions.find(token).expiresAt());
+        var reread=request("GET","/api/v1/me",token,null);
+        assertEquals(avatar.getId(),JsonPath.read(reread.body(),"$.data.avatarAssetId"));
     }
 
     @Test
@@ -134,17 +174,149 @@ class ProfileUpdateFlowIT {
     }
 
     @Test
-    void unsupportedNonNullAvatarFailsWholeUpdateWithoutChangingOtherFields() throws Exception {
+    void missingAvatarFailsWholeUpdateWithoutChangingOtherFields() throws Exception {
         UserAccount account = fixture();
         String token = login(account);
         HttpResponse<String> response = patch(token, body("expectedVersion", 1, "displayName", "不能部分保存", "avatarAssetId", "new_avatar"));
-        assertEquals(503, response.statusCode());
-        assertEquals("DEPENDENCY_UNAVAILABLE", JsonPath.read(response.body(), "$.code"));
+        assertEquals(404, response.statusCode());
+        assertEquals("RESOURCE_NOT_FOUND", JsonPath.read(response.body(), "$.code"));
         UserAccount after = users.selectById(account.getId());
         assertEquals(account.getDisplayName(), after.getDisplayName());
         assertEquals(account.getAvatarAssetId(), after.getAvatarAssetId());
         assertEquals(1, after.getVersion());
         assertEquals(account.getUpdatedAt(), after.getUpdatedAt());
+    }
+
+    @Test
+    void anotherUsersReadyAvatarReturns404AndDoesNotChangeAnyProfileField() throws Exception {
+        var account=fixture(); var other=fixture(); String token=login(account);
+        var foreign=avatar(other.getId(),"AVATAR","READY");
+        var response=patch(token,body("expectedVersion",1,"avatarAssetId",foreign.getId(),"displayName","不能部分保存"));
+        assertEquals(404,response.statusCode(),response.body());
+        assertEquals("RESOURCE_NOT_FOUND",JsonPath.read(response.body(),"$.code"));
+        assertProfileUnchanged(account);
+        assertFalse(response.body().contains(other.getId()));
+    }
+
+    @ParameterizedTest @ValueSource(strings={"CONTENT_IMAGE","CONTENT_VIDEO","REPORT_ATTACHMENT"})
+    void otherMediaScenesReturn422WithTheAvatarFieldViolation(String scene) throws Exception {
+        var account=fixture(); String token=login(account); var wrong=avatar(account.getId(),scene,"READY");
+        var response=patch(token,body("expectedVersion",1,"avatarAssetId",wrong.getId(),"bio","不能部分保存"));
+        assertEquals(422,response.statusCode(),response.body());
+        assertEquals("VALIDATION_ERROR",JsonPath.read(response.body(),"$.code"));
+        assertEquals("avatarAssetId",JsonPath.read(response.body(),"$.violations[0].path"));
+        assertEquals("body",JsonPath.read(response.body(),"$.violations[0].location"));
+        assertProfileUnchanged(account);
+    }
+
+    @ParameterizedTest @ValueSource(strings={"WAITING_UPLOAD","PROCESSING","FAILED"})
+    void nonReadyAvatarsReturn409WithoutPartiallySavingTheProfile(String state) throws Exception {
+        var account=fixture(); String token=login(account); var unready=avatar(account.getId(),"AVATAR",state);
+        var response=patch(token,body("expectedVersion",1,"avatarAssetId",unready.getId(),"displayName","不能部分保存"));
+        assertEquals(409,response.statusCode(),response.body());
+        assertEquals("MEDIA_NOT_READY",JsonPath.read(response.body(),"$.code"));
+        assertEquals("no-store",response.headers().firstValue("Cache-Control").orElseThrow());
+        assertProfileUnchanged(account);
+    }
+
+    @Test
+    void savingTheSameReadyAvatarDoesNotIncrementVersionButStillRevalidatesTheReference() throws Exception {
+        var account=fixture(); String token=login(account); var ready=avatar(account.getId(),"AVATAR","READY");
+        assertEquals(200,patch(token,body("expectedVersion",1,"avatarAssetId",ready.getId())).statusCode());
+        var before=users.selectById(account.getId());
+        var repeated=patch(token,body("expectedVersion",2,"avatarAssetId",ready.getId()));
+        assertEquals(200,repeated.statusCode(),repeated.body());
+        assertEquals(2,(Integer)JsonPath.read(repeated.body(),"$.data.version"));
+        assertEquals(before.getUpdatedAt(),users.selectById(account.getId()).getUpdatedAt());
+        jdbc.update("UPDATE media_asset SET state='FAILED' WHERE id=?",ready.getId());
+        var invalid=patch(token,body("expectedVersion",2,"avatarAssetId",ready.getId()));
+        assertEquals(409,invalid.statusCode()); assertEquals("MEDIA_NOT_READY",JsonPath.read(invalid.body(),"$.code"));
+        assertEquals(2,users.selectById(account.getId()).getVersion());
+    }
+
+    @Test
+    void staleVersionIsRejectedBeforeLookingUpTheRequestedAvatar() throws Exception {
+        var account=fixture(); String token=login(account);
+        assertEquals(200,patch(token,body("expectedVersion",1,"bio","已修改")).statusCode());
+        var response=patch(token,body("expectedVersion",1,"avatarAssetId","nonexistent_avatar"));
+        assertEquals(409,response.statusCode(),response.body());
+        assertEquals("RESOURCE_VERSION_CONFLICT",JsonPath.read(response.body(),"$.code"));
+        assertEquals(2,(Integer)JsonPath.read(response.body(),"$.currentVersion"));
+        assertEquals("avatar_before",users.selectById(account.getId()).getAvatarAssetId());
+    }
+
+    @Test
+    void replacingAndClearingTheAvatarKeepOldMediaAvailableForReuse() throws Exception {
+        var account=fixture(); String token=login(account);
+        var first=avatar(account.getId(),"AVATAR","READY"); var second=avatar(account.getId(),"AVATAR","READY");
+        assertEquals(200,patch(token,body("expectedVersion",1,"avatarAssetId",first.getId())).statusCode());
+        assertEquals(200,patch(token,body("expectedVersion",2,"avatarAssetId",second.getId())).statusCode());
+        assertEquals("READY",assets.selectById(first.getId()).getState());
+        var cleared=patch(token,body("expectedVersion",3,"avatarAssetId",null));
+        assertEquals(200,cleared.statusCode(),cleared.body());
+        assertNull(JsonPath.read(cleared.body(),"$.data.avatarAssetId"));
+        assertEquals("READY",assets.selectById(second.getId()).getState());
+        var reused=patch(token,body("expectedVersion",4,"avatarAssetId",first.getId()));
+        assertEquals(200,reused.statusCode(),reused.body());
+        assertEquals(first.getId(),users.selectById(account.getId()).getAvatarAssetId());
+        assertEquals(5,users.selectById(account.getId()).getVersion());
+    }
+
+    @Test
+    void concurrentAvatarChangesWithTheSameVersionHaveExactlyOneWinner() throws Exception {
+        var account=fixture(); String token=login(account);
+        var first=avatar(account.getId(),"AVATAR","READY"); var second=avatar(account.getId(),"AVATAR","READY");
+        var pool=Executors.newFixedThreadPool(2); var start=new CountDownLatch(1);
+        try {
+            var a=pool.submit(()->{assertTrue(start.await(5,TimeUnit.SECONDS));return patch(token,body("expectedVersion",1,"avatarAssetId",first.getId()));});
+            var b=pool.submit(()->{assertTrue(start.await(5,TimeUnit.SECONDS));return patch(token,body("expectedVersion",1,"avatarAssetId",second.getId()));});
+            start.countDown(); var ar=a.get(15,TimeUnit.SECONDS); var br=b.get(15,TimeUnit.SECONDS);
+            assertEquals(List.of(200,409),List.of(ar.statusCode(),br.statusCode()).stream().sorted().toList());
+            var winner=ar.statusCode()==200?ar:br;
+            assertEquals((String)JsonPath.read(winner.body(),"$.data.avatarAssetId"),users.selectById(account.getId()).getAvatarAssetId());
+            assertEquals(2,users.selectById(account.getId()).getVersion());
+        } finally { start.countDown(); pool.shutdownNow(); }
+    }
+
+    @Test
+    void realUploadValidationAndProfileBindingCompleteTheAvatarSavePipeline() throws Exception {
+        var account=fixture(); String token=login(account);
+        var out=new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(new java.awt.image.BufferedImage(2,3,java.awt.image.BufferedImage.TYPE_INT_RGB),"png",out);
+        byte[] bytes=out.toByteArray();
+        var created=request("POST","/api/v1/media/uploads",token,body("scene","AVATAR","fileName","avatar.png","contentType","image/png","sizeBytes",bytes.length));
+        assertEquals(201,created.statusCode(),created.body());
+        String uploadId=JsonPath.read(created.body(),"$.data.id"), assetId=JsonPath.read(created.body(),"$.data.assetId");
+        objectKeys.add(jdbc.queryForObject("SELECT storage_key FROM media_upload_session WHERE id=?",String.class,uploadId));
+        Map<String,Object> target=JsonPath.read(created.body(),"$.data.singleUploadTarget");
+        var put=HttpRequest.newBuilder(URI.create((String)target.get("url"))).timeout(Duration.ofSeconds(15));
+        ((Map<String,String>)target.get("headers")).forEach((name,value)->{if(!name.equalsIgnoreCase("Content-Length"))put.header(name,value);});
+        var uploaded=client.send(put.PUT(HttpRequest.BodyPublishers.ofByteArray(bytes)).build(),HttpResponse.BodyHandlers.ofString());
+        assertEquals(200,uploaded.statusCode(),uploaded.body());
+        var accepted=request("POST","/api/v1/media/uploads/"+uploadId+"/completion",token,body("expectedVersion",1));
+        assertEquals(202,accepted.statusCode(),accepted.body());
+        String taskId=JsonPath.read(accepted.body(),"$.data.taskId"); processing.processTask(taskId);
+        assertEquals("SUCCEEDED",jdbc.queryForObject("SELECT state FROM media_processing_task WHERE id=?",String.class,taskId));
+        var ready=assets.selectById(assetId); assertEquals("READY",ready.getState());
+        assertEquals(storage.identity(),ready.getReadyStorageId()); assertEquals(2,ready.getWidth()); assertEquals(3,ready.getHeight());
+        var saved=patch(token,body("expectedVersion",1,"avatarAssetId",assetId));
+        assertEquals(200,saved.statusCode(),saved.body()); assertEquals(assetId,JsonPath.read(saved.body(),"$.data.avatarAssetId"));
+        assertEquals(assetId,users.selectById(account.getId()).getAvatarAssetId());
+        assertEquals("READY",assets.selectById(assetId).getState());
+        var profile=request("GET","/api/v1/users/"+account.getId(),null,null);
+        assertEquals(200,profile.statusCode(),profile.body());
+        String avatarUrl=JsonPath.read(profile.body(),"$.data.avatarUrl");assertNotNull(avatarUrl);
+        var redirected=client.send(HttpRequest.newBuilder(URI.create(avatarUrl)).GET().build(),HttpResponse.BodyHandlers.ofString());
+        assertEquals(302,redirected.statusCode(),redirected.body());
+        var visible=client.send(HttpRequest.newBuilder(URI.create(redirected.headers().firstValue("Location").orElseThrow())).GET().build(),HttpResponse.BodyHandlers.ofByteArray());
+        assertEquals(200,visible.statusCode());assertArrayEquals(bytes,visible.body());
+    }
+
+    private void assertProfileUnchanged(UserAccount before) {
+        var after=users.selectById(before.getId());
+        assertEquals(before.getDisplayName(),after.getDisplayName()); assertEquals(before.getBio(),after.getBio());
+        assertEquals(before.getAvatarAssetId(),after.getAvatarAssetId()); assertEquals(before.getVersion(),after.getVersion());
+        assertEquals(before.getUpdatedAt(),after.getUpdatedAt()); assertEquals(before.getAuthVersion(),after.getAuthVersion());
     }
 
     @Test
@@ -268,6 +440,20 @@ class ProfileUpdateFlowIT {
         return account;
     }
 
+    private MediaAsset avatar(String owner,String scene,String state) {
+        var asset=new MediaAsset(); asset.setId(UUID.randomUUID().toString().replace("-","")); asset.setOwnerId(owner);
+        asset.setScene(scene); asset.setState(state); asset.setFileName("avatar.png");
+        asset.setDeclaredContentType("image/png"); asset.setDeclaredSizeBytes(67L);
+        asset.setStorageKey("private/"+owner+"/"+asset.getId()+"/source");
+        asset.setCreatedAt(java.time.LocalDateTime.now(java.time.ZoneOffset.UTC));
+        if("READY".equals(state)) {
+            asset.setActualContentType("image/png"); asset.setActualSizeBytes(67L); asset.setWidth(1); asset.setHeight(1);
+            asset.setReadyObjectKey("private/"+owner+"/"+asset.getId()+"/ready/fixture");
+            asset.setReadyObjectEtag("fixture-etag"); asset.setReadyStorageId("a".repeat(64));
+        }
+        assets.insert(asset); return asset;
+    }
+
     private String login(UserAccount account) throws Exception {
         HttpResponse<String> response = request("POST", "/api/v1/auth/sessions", null,
                 body("email", account.getEmail(), "password", PASSWORD));
@@ -282,6 +468,7 @@ class ProfileUpdateFlowIT {
     private HttpResponse<String> request(String method, String path, String token, Object body) throws Exception {
         var builder = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path)).timeout(Duration.ofSeconds(15));
         if (token != null) builder.header("Authorization", "Bearer " + token);
+        if (method.equals("POST") && path.startsWith("/api/v1/media/uploads")) builder.header("Idempotency-Key",UUID.randomUUID().toString());
         if (body == null) builder.method(method, HttpRequest.BodyPublishers.noBody());
         else builder.header("Content-Type", "application/json").method(method, HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body)));
         return client.send(builder.build(), HttpResponse.BodyHandlers.ofString());

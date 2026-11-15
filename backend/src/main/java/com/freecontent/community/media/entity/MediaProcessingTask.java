@@ -28,4 +28,8 @@ public class MediaProcessingTask {
     private String expectedSha256;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private Integer attemptCount;
+    private String leaseToken;
+    private LocalDateTime leaseUntil;
+    private LocalDateTime availableAt;
 }

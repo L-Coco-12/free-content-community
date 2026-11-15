@@ -4,6 +4,9 @@
 
 文中 `src/` 路径相对 `backend/`；验证数字为对应开发阶段的历史记录，当前结果以最新执行为准。
 
+2026-11-14 已接通[图片自动校验通路](media-processing.md)：完成上传后后台自动推进 READY 或 FAILED。
+原格式与动画保留；[头像绑定保存](user.md#修改当前用户资料)和[avatarUrl展示](user-avatar-access.md)均已接通。
+
 ## 接口行为与约定
 
 ### 获取当前上传限制与签名策略
@@ -32,7 +35,7 @@ WRITE_BLOCKED允许查询；缺少或失效身份返回401，DISABLED返回403�
 
 该节描述策略查询；私有上传会话创建见下节。返回视频、分片参数不代表视频或分片上传接口已经实现。
 创建会话已复用这组配置；后续完成上传还须核验实际大小、类型、归属和READY状态，前端检查不能替代服务端检查。
-非空头像绑定仍等待素材模块，不因本接口上线而开放。
+头像绑定要求本人READY的AVATAR素材，通过PATCH /me保存；上传策略查询本身不绑定头像。
 
 专项检查覆盖配置覆盖、数值范围、认证状态、响应字段白名单、真实HTTP/MySQL/Redis及生成的OpenAPI必填字段和范围。
 
@@ -96,7 +99,7 @@ Maven显式补齐与MinIO 9.0.4匹配的okhttp-jvm 5.5.1；多平台入口包本
 签名约束方法、对象、Content-Type及Content-Length，实际大小不符会在写入前被MinIO拒绝；提供sha256时校验和也会被验证。真实格式及后续READY校验仍由完成上传流程负责。
 签名过期与会话过期独立，幂等重放保留原签名到期时间；会话查询接口已支持在会话有效时重新签发地址。
 
-当前已实现创建会话、私有素材登记、查询续签及取消。完成、异步校验及READY流程仍待实现，非空头像绑定继续按原规则拒绝。
+当前已实现创建会话、私有素材登记、查询续签、取消、完成和图片异步校验；READY头像可通过PATCH /me绑定保存。
 
 2026-11-07验证：`mvn verify`通过全部239项测试（145 单元/Web + 94 集成），
 0失败、0错误、0跳过。覆盖真实HTTP/MySQL/Redis/MinIO上传、签名篡改拒绝、私有读取拒绝、
@@ -137,7 +140,7 @@ Redis配额在SQL事务外检查；查询事务按账号→上传会话顺序取
 续签后的地址已通过真实MinIO PUT验证，保留Content-Type、Content-Length和可选校验和约束。
 前端向MinIO上传时不附带业务Bearer；浏览器用原文件二进制发送，由浏览器生成Content-Length。
 singleUploadTarget的OpenAPI 3.1声明已明确允许对象或null；DTO中已有业务注释保留。
-查询接口复用V5表结构；取消、后台回收及完成确认见下节。后台媒体校验、素材READY及分片续传仍按后续阶段实现。
+查询接口复用V5表结构；取消、后台回收及完成确认见下节。图片校验和素材READY见[自动校验通路](media-processing.md)，分片续传尚未实现。
 
 2026-11-07验证：`mvn clean verify`通过全部266项测试（152项单元/Web、114项集成），0失败、0错误、0跳过，打包成功。
 本用例新增26项专项检查，覆盖原会话续签、期限裁剪、终态/过期、越权及账号限制、独立配额、并发共享锁、
@@ -194,7 +197,7 @@ UploadCleanupWorker每轮最多认领一个任务，原子更新为RUNNING；存
 失败时重新排队，达到尝试上限保留FAILED；配置变化或资源状态不再允许删除时也保留失败记录，不对外暴露存储内部信息。
 物理清理失败不会撤回已提交的取消结果，后台故障由任务记录和安全日志排查。当前没有公开的清理任务查询或重试接口。
 取消不直接关闭浏览器到MinIO的连接；极长在途传输不受数据库状态强制中断，缓冲并非网络截止保证，后续孤立对象对账需覆盖此类残留。
-后台媒体校验、READY及分片上传/AbortMultipartUpload仍是后续阶段；完成确认与媒体任务查询见下节，前端上传控件未修改。
+后台图片校验和READY已接通；分片上传/AbortMultipartUpload仍待后续阶段。完成确认与媒体任务查询见下节。
 
 2026-11-07验证：`mvn clean verify`通过全部306项测试（170项单元/Web、136项集成），0失败、0错误、0跳过，打包成功。
 本用例新增40项专项检查，覆盖204空响应、重复取消、状态/版本/归属保护、旧创建键凭证拒绝、入队失败回滚、
@@ -253,8 +256,8 @@ TaskReceipt.statusUrl和Location均为`/api/v1/tasks/{taskId}`，可直接查询
 其他用户、未知任务和内部邮件/清理任务ID均返回404；WRITE_BLOCKED可以读取任务，不能提交完成确认。
 任务查询返回契约要求的状态、进度、错误字段及时间，不返回存储路径、凭证或内部任务记录。
 
-本阶段没有后台媒体处理worker，任务保持PENDING、progressPercent=0、retryable=false。
-202只表示持久化受理。素材查询已实现；任务执行、实际文件校验、READY推进、失败任务重试及头像绑定后续实现。
+任务初始PENDING、progressPercent=0、retryable=false；后台Worker随后执行图片校验并推进READY或FAILED。
+202只表示持久化受理。临时存储故障由后台有限重试，用户主动重试接口尚未实现；头像绑定必须等待READY。
 
 专项验证覆盖真实HTTP/MySQL/Redis/MinIO上传与HEAD、原子提交和回滚、所有权、权限变化、
 状态/版本/期限、幂等重放和指纹冲突、独立限流、并发完成/取消、租约恢复及生成的OpenAPI。
@@ -280,7 +283,7 @@ taskId取完成上传返回的TaskReceipt.taskId；不使用uploadId、assetId�
 `app.media.task-query`默认同来源120次/分钟、同用户60次/分钟，配置及环境变量已在application.yml和infra/.env.example列出。
 已认证且ID格式有效的查询均计数，包含404、终态和重复查询；Redis结果无法确认或数据库读取失败返回503。
 
-当前没有媒体处理worker，新完成任务仍保持PENDING。查询支持五种状态不代表后台校验、转码或READY推进已实现。
+图片处理Worker自动推进新完成任务和历史积压任务；查询本身仍只读，不触发校验。视频与转码尚未实现。
 MediaTaskQueryFlowIT使用受控数据库记录验证各状态、实时读取、查询不改数据、权限复核、任务隔离、HTTP错误及响应头。
 MediaTaskQueryRateLimiterTest验证Redis故障和不确定结果，完整回归日志为`.local-dev/media-task-query-full-check.log`。
 
@@ -307,7 +310,7 @@ READY记录若缺少实际MIME或实际大小，返回503 DEPENDENCY_UNAVAILABLE
 V8复用V5已有actual_content_type和actual_size_bytes，新增可空duration_seconds、width及height；
 时长使用DECIMAL(20,6)，时长非负、宽高为正数的约束由数据库保证，V1～V7保持不变。
 当前没有媒体校验worker，正常完成确认后的素材仍为PROCESSING，实际元数据由后续worker填写。
-读取受控测试记录中的READY/视频元数据，不代表当前已实现媒体处理或视频上传。
+图片READY通路已实现；读取受控测试记录中的视频元数据仍不代表已实现视频上传或处理。
 
 独立配置`app.media.asset-query`默认来源120次/分钟、用户60次/分钟。
 已认证且ID格式有效的重复读取、404和终态查询均计数，与任务查询及其他上传接口分别计数。
@@ -349,7 +352,7 @@ WRITE_BLOCKED可以读取策略。这里只提供策略查询，后续实际上�
 
 同一账号操作采用账号行→幂等行的锁顺序。准备签名不持有写事务，晚到的旧请求必须通过租约令牌校验才能提交。
 会话的签名时间、TTL及配置指纹是创建响应快照，后续续签不能覆盖这些字段来改变原幂等结果。
-当前仅P0图片SINGLE；素材初始WAITING_UPLOAD，尚不能用于头像或内容关联。查询续签、取消与完成确认已实现，后台媒体校验及READY处理流程仍待实现。
+当前仅P0图片SINGLE；素材初始WAITING_UPLOAD。查询续签、取消、完成及后台图片校验已实现，内容关联和头像绑定均须等待READY。
 
 ### 查询上传会话与恢复上传怎样阅读
 
@@ -392,8 +395,8 @@ P0固定SINGLE、partSizeBytes:null、totalParts:1及uploadedParts:[]；分片�
 8. `media/service/MediaTaskQueryService.java`、实现及`transaction/MediaTaskQueryTransactionService.java`：复核当前身份、账号状态及任务归属，只返回`dto/MediaTaskView.java`的契约字段。
 9. `media/config/`下UploadCompletion与MediaTaskQuery配置、`media/ratelimit/`对应限流器：两个独立分钟窗口，复用既有Lua算法，不修改创建重放免配额规则。
 
-任务初始PENDING，素材PROCESSING。当前没有媒体worker，不生成进度或READY结果；真实格式、SHA-256和尺寸检查留给后续处理。
-原始上传URL仍可能在到期前写入，后续worker须复核记录的对象版本/ETag/大小等快照，并固定最终可用文件，防止校验后覆盖。
+任务初始PENDING，素材PROCESSING；Worker执行真实格式、SHA-256、尺寸及动画预算检查，再原子推进READY/SUCCEEDED或失败。
+原始上传URL仍可能在到期前写入；Worker条件读取记录的源快照，将同一份校验字节写入独立READY对象，防止校验后覆盖。
 `TaskReceipt`保留原PENDING受理快照；`MediaTaskView`返回任务当前状态，不暴露存储键、签名指纹或对象快照。
 测试按media/config、controller、service、ratelimit组织，CompleteUploadFlowIT覆盖真实上传、并发、租约恢复及事务回滚。
 `media/service/MediaTaskQueryFlowIT`独立验证任务查询：五种持久化状态、实时读取、时间不变、重试关联、

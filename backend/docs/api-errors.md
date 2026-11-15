@@ -30,6 +30,7 @@ Controller只补充本接口特有错误，例如本人查询：
 文档注解不参与权限判定或异常处理，业务流程、认证和事务仍按原模块执行。
 CommonErrorDocumentationIT验证错误码隔离、响应头、成功schema及显式关闭默认集合。
 测试资源`src/test/resources/contracts/api-v1-error-responses.json`保存从固定版本外部OpenAPI提取的已实现接口响应状态和错误码，记录来源与SHA-256，不依赖个人磁盘绝对路径。
+头像展示增加已确认的getPublicUserAvatar扩展；extensionSources记录扩展说明，原有45个操作定义不变。
 测试按operationId逐项比较完整错误集合，并要求快照覆盖全部已生成接口；新增接口或正式调整契约时同步更新快照，不能通过修改公共默认集合绕过校验。
 SessionAuthenticationService仍拒绝邮箱未验证的账号。BearerSessionFilter在认证失败边界仅为创建上传、创建内容保留EMAIL_VERIFICATION_REQUIRED，其余受保护请求映射为403 PERMISSION_DENIED，密码登录仍由公开登录流程处理；该映射不读取Swagger注解。
 上传查询、取消事务中的邮箱复核同样返回PERMISSION_DENIED；认证前后状态变化均不能取得上传地址或修改上传状态。

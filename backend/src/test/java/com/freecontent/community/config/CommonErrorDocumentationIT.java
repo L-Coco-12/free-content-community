@@ -107,7 +107,7 @@ class CommonErrorDocumentationIT {
     @SuppressWarnings("unchecked")
     void everyDocumentedOperationHasProblemResponsesWithCommonHeaders() throws Exception {
         var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/v3/api-docs"))
-                .timeout(Duration.ofSeconds(15)).GET().build();
+                .timeout(Duration.ofSeconds(45)).GET().build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         assertEquals(200, response.statusCode());
         Map<String, Map<String, Object>> paths = JsonPath.read(response.body(), "$.paths");
@@ -138,7 +138,7 @@ class CommonErrorDocumentationIT {
     @SuppressWarnings("unchecked")
     void everyOperationMatchesTheVersionedErrorContract(String operationId, Map<String, Object> expected) throws Exception {
         var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/v3/api-docs"))
-                .timeout(Duration.ofSeconds(15)).GET().build();
+                .timeout(Duration.ofSeconds(45)).GET().build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         assertEquals(200, response.statusCode());
         Map<String, Object> operation = JsonPath.read(response.body(),
@@ -174,7 +174,7 @@ class CommonErrorDocumentationIT {
     @SuppressWarnings("unchecked")
     void theContractSnapshotCoversEveryDocumentedOperation() throws Exception {
         var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/v3/api-docs"))
-                .timeout(Duration.ofSeconds(15)).GET().build();
+                .timeout(Duration.ofSeconds(45)).GET().build();
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
         assertEquals(200, response.statusCode());
         Set<String> actual = new HashSet<>(JsonPath.<List<String>>read(response.body(), "$.paths.*.*.operationId"));

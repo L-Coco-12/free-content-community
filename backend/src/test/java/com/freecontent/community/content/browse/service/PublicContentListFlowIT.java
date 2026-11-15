@@ -5,6 +5,8 @@ import com.freecontent.community.auth.security.TokenDigest;
 import com.freecontent.community.auth.session.RedisSessionStore;
 import com.freecontent.community.content.support.ContentTestSupport;
 import com.freecontent.community.content.browse.mapper.PublicContentMapper;
+import com.freecontent.community.content.mapper.ContentLikeReadMapper;
+import com.freecontent.community.content.mapper.ContentBookmarkReadMapper;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.dao.TransientDataAccessResourceException;
 import org.apache.ibatis.session.SqlSession;
@@ -15,10 +17,13 @@ import com.freecontent.community.content.browse.config.PublicContentCursorProper
 import com.freecontent.community.content.browse.cursor.PublicContentCursor;
 import com.freecontent.community.user.entity.UserAccount;
 import com.freecontent.community.user.mapper.*;
+import com.freecontent.community.media.storage.MediaObjectReader;
+import com.freecontent.community.common.error.*;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.*;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -39,6 +44,9 @@ class PublicContentListFlowIT {
     @Autowired private JdbcTemplate jdbc;
     @MockitoSpyBean private PublicContentMapper reads;
     @MockitoSpyBean private PublicUserMapper profiles;
+    @MockitoSpyBean private ContentLikeReadMapper likeStates;
+    @MockitoSpyBean private ContentBookmarkReadMapper bookmarkStates;
+    @MockitoSpyBean private MediaObjectReader avatarObjects;
     @Autowired private SqlSession sqlSession;
     @Autowired private UserAccountMapper users;
     @Autowired private UserRoleMapper roles;
@@ -62,6 +70,26 @@ class PublicContentListFlowIT {
         var second=get("limit=2&cursor="+next,null);ok(second);assertEquals(List.of("c_C"),ids(second));assertEquals(snapshot,JsonPath.read(second.body(),"$.data.snapshotAt"));
         assertFalse(JsonPath.<Boolean>read(second.body(),"$.data.hasMore"));assertNull(JsonPath.read(second.body(),"$.data.nextCursor"));
         Map<String,Object> card=JsonPath.read(first.body(),"$.data.items[0]");assertEquals(14,card.size());assertFalse(card.containsKey("bodyMarkdown"));assertFalse(card.containsKey("imageAssetIds"));assertFalse(card.containsKey("videoAssetId"));
+    }
+    @Test void avatarReferencesAreBatchedWithoutStorageRequestsAndImageFailuresDoNotHideArticles()throws Exception{
+        var first=author();var second=author();
+        var avatarIds=new ArrayList<String>();
+        for(var owner:List.of(first,second)){
+            String avatar=id();avatarIds.add(avatar);
+            jdbc.update("INSERT INTO media_asset(id,owner_id,scene,file_name,declared_content_type,declared_size_bytes,storage_key,state,created_at) VALUES(?,?,'AVATAR','avatar.png','image/png',1,?,'READY',UTC_TIMESTAMP(6))",avatar,owner.getId(),"private/"+owner.getId()+"/"+avatar+"/source");
+            jdbc.update("UPDATE app_user SET avatar_asset_id=? WHERE id=?",avatar,owner.getId());
+        }
+        publish(first,id(),BASE,"ARTICLE");publish(first,id(),BASE.plusSeconds(1),"ARTICLE");publish(second,id(),BASE.plusSeconds(2),"ARTICLE");
+        doThrow(new BusinessException(ErrorCode.DEPENDENCY_UNAVAILABLE)).when(avatarObjects).verify(any());
+        clearInvocations(profiles);
+        var response=get("limit=10",null);ok(response);assertEquals(3,ids(response).size());
+        List<String> urls=JsonPath.read(response.body(),"$.data.items[*].author.avatarUrl");
+        assertEquals(3,urls.size());assertEquals(2,new HashSet<>(urls).size());
+        assertEquals(Set.of("http://127.0.0.1:"+port+"/api/v1/users/"+first.getId()+"/avatar?assetId="+avatarIds.get(0),
+                "http://127.0.0.1:"+port+"/api/v1/users/"+second.getId()+"/avatar?assetId="+avatarIds.get(1)),new HashSet<>(urls));
+        assertTrue(urls.stream().allMatch(url->url.startsWith("http://127.0.0.1:"+port+"/api/v1/users/") && url.contains("/avatar?assetId=")));
+        verify(profiles,times(1)).findByIds(anyList());verify(profiles,never()).findById(anyString());
+        verify(avatarObjects,never()).verify(any());
     }
     @Test void filtersOnlyThePublishedRevisionAndKeepsDisabledTagReferences()throws Exception{
         var owner=author();var tagged=publish(owner,id(),BASE,"ARTICLE");var plain=publish(owner,id(),BASE.plusSeconds(1),"ARTICLE");
@@ -106,12 +134,17 @@ class PublicContentListFlowIT {
         var response=client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/v1/contents/"+row.content())).GET().build(),HttpResponse.BodyHandlers.ofString());assertEquals(200,response.statusCode(),response.body());
         assertEquals("2",redis.opsForValue().get(sourceKey()));
     }
-    @Test void fullPagesUseFiveBatchQueriesWithoutPerItemLookups()throws Exception{
+    @ParameterizedTest @ValueSource(booleans={false,true})
+    void fullPagesUseBoundedBatchQueriesWithoutPerItemLookups(boolean authenticated)throws Exception{
         var first=author();var second=author();for(int i=0;i<12;i++)publish(i%2==0?first:second,id(),BASE.plusSeconds(i),"ARTICLE");
-        clearInvocations(reads,profiles);var response=get("limit=50",null);ok(response);assertEquals(12,ids(response).size());
+        String viewerId=null,token=null;if(authenticated){var viewer=author();viewerId=viewer.getId();token=sessions.create(viewerId,1,"batch-read").accessToken();}
+        clearInvocations(reads,profiles,likeStates,bookmarkStates);var response=get("limit=50",token);ok(response);assertEquals(12,ids(response).size());
         verify(reads,times(1)).listVisible(any(),any(),any(),any(),any(),eq(51));
         verify(reads,times(1)).findAssetsForRevisions(anyList());verify(reads,times(1)).findTagsForRevisions(anyList());
         verify(reads,times(1)).countVisibleByAuthors(anyList());verify(profiles,times(1)).findByIds(anyList());
+        verify(likeStates,times(1)).find(argThat(ids->ids.size()==12),eq(viewerId));
+        if(authenticated)verify(bookmarkStates,times(1)).find(argThat(ids->ids.size()==12),eq(viewerId));
+        else verify(bookmarkStates,never()).find(anyList(),anyString());
         verify(reads,never()).findById(anyString());verify(reads,never()).findAssets(anyString());verify(reads,never()).findTags(anyString());
         verify(reads,never()).countVisibleByAuthor(anyString());verify(profiles,never()).findById(anyString());
     }

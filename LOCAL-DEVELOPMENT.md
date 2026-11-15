@@ -1,5 +1,16 @@
 # 本地 Nginx 联调入口
 
+本地入口固定为8088，容器内Nginx监听80。代理同时传递原始Host和`X-Forwarded-Port: 8088`，
+避免Tomcat的native转发处理按HTTP协议推断为80，生成丢失端口的avatarUrl。
+修改本地映射端口时，这个转发端口也需同步调整。
+
+已绑定READY头像的账号可用以下只读检查验证真实入口、头像302及最终图片200；不修改资料或素材：
+
+```powershell
+.\infra\tests\Test-AvatarPublicOrigin.ps1 -UserId 'your_user_id'
+.\infra\tests\Test-AvatarPublicOrigin.ps1 -UserId 'your_user_id' -Origin 'http://127.0.0.1:8088'
+```
+
 前端目录与后端仓库保持同级：
 
 ```text

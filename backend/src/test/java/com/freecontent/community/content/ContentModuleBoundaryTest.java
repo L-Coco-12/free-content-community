@@ -15,7 +15,7 @@ class ContentModuleBoundaryTest {
         Path content = Path.of("src/main/java/com/freecontent/community/content");
         assertTrue(Files.isDirectory(content.resolve("review")), "未找到内容模块源码，无法检查依赖边界");
         List<String> violations = new ArrayList<>();
-        for (String scope : List.of("browse", "review", "service/read", "validation", "mapper", "ratelimit", "model", "dto")) {
+        for (String scope : List.of("browse", "review", "moderation", "interaction", "service/read", "validation", "mapper", "ratelimit", "model", "dto")) {
             Path directory = content.resolve(scope);
             if (!Files.exists(directory)) continue;
             try (var files = Files.walk(directory)) {
@@ -23,7 +23,7 @@ class ContentModuleBoundaryTest {
                     List<String> lines = Files.readAllLines(file);
                     for (int index = 0; index < lines.size(); index++) {
                         if (lines.get(index).contains("com.freecontent.community.content.workspace.")
-                                || scope.equals("browse") && lines.get(index).contains("com.freecontent.community.content.review.")) {
+                                || (scope.equals("browse") || scope.equals("interaction")) && lines.get(index).contains("com.freecontent.community.content.review.")) {
                             violations.add(content.relativize(file) + ":" + (index + 1) + " " + lines.get(index).trim());
                         }
                     }

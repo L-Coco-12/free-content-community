@@ -44,7 +44,7 @@ AES-GCM 的附加认证数据绑定接口、目标作者和排序，受保护载
 5. [PublicContentMapper#listVisibleByAuthor](../src/main/java/com/freecontent/community/content/browse/mapper/PublicContentMapper.java)：按作者与公开条件查询；素材、标签及公开数量批量加载，复用 PublicContentAssembler。
 6. PublicContentCursor#next：按最后扫描位置生成续页游标，保持原快照和期限。
 
-正常非空页固定 5 次业务 SQL：作者资料、候选作品、批量素材、批量标签、作者公开数量。
+正常非空页游客固定6次业务SQL：作者资料、候选作品、批量素材、批量标签、作者公开数量、点赞统计；登录用户另加一次批量收藏关系查询，共7次。
 已存在作者的空候选页 2 次，缺失作者 1 次；认证查询另计。禁止逐项调用详情 Service。
 本页的作者、候选、引用和数量共享一个数据库快照。查询不修改账号、内容、修订、业务审计或 Outbox。
 批量读取故障返回 503，不能吞成成功空页；仅纯投影数据异常允许按条排除并推进扫描位置。

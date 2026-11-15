@@ -53,7 +53,7 @@ class UserContentListServiceTest {
         RuntimeException failure = transactionFailure
                 ? new CannotCreateTransactionException("sensitive transaction detail")
                 : new DataAccessResourceFailureException("sensitive SQL detail");
-        when(transactions.list(any())).thenThrow(failure);
+        when(transactions.list(any(),isNull())).thenThrow(failure);
         var error = assertThrows(BusinessException.class, () -> service.listUserContents("author_1", null, null, null, "source"));
         assertEquals(ErrorCode.DEPENDENCY_UNAVAILABLE, error.errorCode());
         assertFalse(error.getMessage().contains("sensitive"));
