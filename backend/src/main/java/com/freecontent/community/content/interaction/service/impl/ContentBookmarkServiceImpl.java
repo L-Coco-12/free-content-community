@@ -16,11 +16,19 @@ public class ContentBookmarkServiceImpl implements ContentBookmarkService {
     private final ContentBookmarkRateLimiter limiter;
     public ContentBookmarkServiceImpl(ContentBookmarkTransactionService transactions,ContentBookmarkRateLimiter limiter){this.transactions=transactions;this.limiter=limiter;}
     @Override public void bookmark(String contentId,SessionPrincipal actor,String sourceIp){
+        validateAndAcquire(contentId,actor,sourceIp);
+        try{transactions.bookmark(contentId,actor);}
+        catch(DataAccessException | TransactionException ex){throw new BusinessException(ErrorCode.DEPENDENCY_UNAVAILABLE,"收藏数据服务暂不可用");}
+    }
+    @Override public void unbookmark(String contentId,SessionPrincipal actor,String sourceIp){
+        validateAndAcquire(contentId,actor,sourceIp);
+        try{transactions.unbookmark(contentId,actor);}
+        catch(DataAccessException | TransactionException ex){throw new BusinessException(ErrorCode.DEPENDENCY_UNAVAILABLE,"取消收藏数据服务暂不可用");}
+    }
+    private void validateAndAcquire(String contentId,SessionPrincipal actor,String sourceIp){
         if(actor==null || actor.user()==null)throw new BusinessException(ErrorCode.AUTHENTICATION_REQUIRED);
         if(contentId==null || !contentId.matches("[A-Za-z0-9_-]{1,64}"))throw new BusinessException(ErrorCode.VALIDATION_ERROR,"内容ID格式不正确",null,null,
                 List.of(new ProblemDetailResponse.Violation("path","contentId","仅允许1到64位字母、数字、下划线及短横线")));
         limiter.acquire(actor.user().id(),sourceIp);
-        try{transactions.bookmark(contentId,actor);}
-        catch(DataAccessException | TransactionException ex){throw new BusinessException(ErrorCode.DEPENDENCY_UNAVAILABLE,"收藏数据服务暂不可用");}
     }
 }

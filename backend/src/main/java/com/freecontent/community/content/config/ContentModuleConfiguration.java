@@ -16,6 +16,7 @@ import com.freecontent.community.content.moderation.config.ContentTakeDownProper
 import com.freecontent.community.content.workspace.config.ContentMediaPreviewProperties;
 import com.freecontent.community.content.interaction.config.ContentLikeProperties;
 import com.freecontent.community.content.interaction.config.ContentBookmarkProperties;
+import com.freecontent.community.content.interaction.config.BookmarkQueryProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
@@ -35,6 +36,7 @@ import org.springframework.context.annotation.Configuration;
         ContentQueryProperties.class,
         ContentLikeProperties.class,
         ContentBookmarkProperties.class,
+        BookmarkQueryProperties.class,
         ContentReviewSubmissionProperties.class,
         ReviewCancellationProperties.class,
         ReviewDecisionProperties.class})

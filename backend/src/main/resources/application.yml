@@ -60,6 +60,10 @@ mybatis-plus:
 
 app:
   content:
+    bookmark-query:
+      ip-per-minute-limit: ${CONTENT_BOOKMARK_QUERY_IP_PER_MINUTE_LIMIT:120}
+      user-per-minute-limit: ${CONTENT_BOOKMARK_QUERY_USER_PER_MINUTE_LIMIT:60}
+      redis-key-prefix: ${CONTENT_BOOKMARK_QUERY_REDIS_KEY_PREFIX:fc:content:}
     bookmark:
       ip-per-minute-limit: ${CONTENT_BOOKMARK_IP_PER_MINUTE_LIMIT:120}
       user-per-minute-limit: ${CONTENT_BOOKMARK_USER_PER_MINUTE_LIMIT:60}

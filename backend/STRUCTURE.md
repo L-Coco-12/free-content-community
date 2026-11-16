@@ -16,7 +16,7 @@ src/main/java/com/freecontent/community/
 ├── media/                        # 上传、完成、取消、图片自动校验、任务与素材、存储读写签名
 ├── tag/                          # 标签管理及公开有效标签
 ├── content/
-│   ├── interaction/              # 点赞/取消、收藏写入、事务一致性与业务配额
+│   ├── interaction/              # 点赞/收藏及取消、事务一致性与业务配额
 │   ├── browse/                   # 公开详情/全站及作者列表；可选认证、游标、批量投影及公开配额
 │   ├── workspace/                # 创建、草稿、本人查询/预览、撤回、重新公开、回收站删除/恢复
 │   │   ├── controller/
@@ -62,7 +62,7 @@ src/main/java/com/freecontent/community/
 | 标签 | [tag](docs/tag.md) |
 | 内容创作 | [workspace](docs/content-workspace.md) · [历史修订新草稿](docs/content-draft-creation.md) · [撤回](docs/content-publication-withdrawal.md) · [重新公开](docs/content-republication.md) · [删除](docs/content-deletion.md) · [恢复](docs/content-restoration.md) |
 | 内容审核 | [review](docs/content-review.md) |
-| 内容互动 | [点赞](docs/content-like.md) · [取消点赞](docs/content-unlike.md) · [收藏](docs/content-bookmark.md) |
+| 内容互动 | [点赞](docs/content-like.md) · [取消点赞](docs/content-unlike.md) · [收藏](docs/content-bookmark.md) · [取消收藏](docs/content-unbookmark.md) |
 | 运营内容 | [后台内容列表](docs/content-admin-list.md) · [后台内容详情](docs/content-admin-detail.md) · [强制下架](docs/content-take-down.md) |
 | 已发布内容浏览 | [详情](docs/content-browse.md) · [列表](docs/content-list.md) · [作者作品](docs/content-author-list.md) · [媒体取址](docs/content-media-access.md) |
 | 错误契约与 OpenAPI | [api-errors](docs/api-errors.md) |
@@ -174,6 +174,13 @@ mvn clean verify
 用户模块不复制内容 SQL 或调用内容详情用例。主页使用独立 `app.user.public-query` / `{user-public-query}` 配额。
 
 ## 公开列表的连续浏览与批量读取
+
+本人收藏列表归 `content.interaction`，虽然路由位于 `/me/bookmarks`，仍不迁入 user/auth。
+MyBookmarksController、MyBookmarksService接口/impl、事务、BookmarkQueryMapper、BookmarkCursor、
+限流器与配置同组；使用独立 `app.content.bookmark-query` 配额。
+全站、作者及收藏列表通过共享 `content.service.read.PublicContentSummaryReader` 批量装配公开卡片，
+Reader以MANDATORY保持调用方快照。收藏候选按关系createdAt/id排序，复用公开可见性SQL及V27索引。
+详见[本人收藏列表](docs/content-bookmark-list.md)。
 
 公开列表采用独立PublicContentListService接口与service.impl，复用browse的Controller、Mapper、
 PublicContentAssembler和公开查询限流；禁止逐项调用详情用例。原单条详情的错误边界保持不变。

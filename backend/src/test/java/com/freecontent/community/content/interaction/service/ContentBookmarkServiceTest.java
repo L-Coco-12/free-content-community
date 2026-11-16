@@ -36,4 +36,18 @@ class ContentBookmarkServiceTest {
         doThrow(failure).when(transactions).bookmark("content",actor);
         var error=assertThrows(BusinessException.class,()->service.bookmark("content",actor,"source"));assertEquals(ErrorCode.DEPENDENCY_UNAVAILABLE,error.errorCode());assertFalse(error.getMessage().contains("private SQL"));
     }
+    @Test void invalidUnbookmarkRequestsDoNotAcquireQuota(){
+        assertEquals(ErrorCode.AUTHENTICATION_REQUIRED,assertThrows(BusinessException.class,()->service.unbookmark("content",null,"source")).errorCode());
+        assertEquals(ErrorCode.VALIDATION_ERROR,assertThrows(BusinessException.class,()->service.unbookmark("bad!",actor,"source")).errorCode());verifyNoInteractions(limiter,transactions);
+    }
+    @Test void unbookmarkQuotaFailureStopsTheTransaction(){
+        doThrow(new BusinessException(ErrorCode.RATE_LIMITED)).when(limiter).acquire(actor.user().id(),"source");
+        assertEquals(ErrorCode.RATE_LIMITED,assertThrows(BusinessException.class,()->service.unbookmark("content",actor,"source")).errorCode());verifyNoInteractions(transactions);
+    }
+    @ParameterizedTest @ValueSource(booleans={false,true})
+    void unbookmarkPersistenceFailuresAre503(boolean transaction){
+        RuntimeException failure=transaction?new CannotCreateTransactionException("private SQL"):new DataAccessResourceFailureException("private SQL");
+        doThrow(failure).when(transactions).unbookmark("content",actor);
+        var error=assertThrows(BusinessException.class,()->service.unbookmark("content",actor,"source"));assertEquals(ErrorCode.DEPENDENCY_UNAVAILABLE,error.errorCode());assertFalse(error.getMessage().contains("private SQL"));
+    }
 }

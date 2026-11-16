@@ -22,10 +22,7 @@ public class ContentBookmarkTransactionService {
     }
     @Transactional(isolation=Isolation.READ_COMMITTED)
     public void bookmark(String contentId,SessionPrincipal actor){
-        String user=actor.user().id();var account=accounts.findByIdForShare(user);
-        if(account==null || account.authVersion()==null || account.authVersion()!=actor.authVersion())throw new BusinessException(ErrorCode.AUTHENTICATION_REQUIRED);
-        if(!account.active())throw new BusinessException(ErrorCode.ACCOUNT_RESTRICTED);
-        if(!account.emailVerified())throw new BusinessException(ErrorCode.PERMISSION_DENIED);
+        String user=authorize(actor);
         visibility.requireCurrentlyVisible(contentId);
         try{
             if(bookmarks.insert(UUID.randomUUID().toString().replace("-",""),user,contentId,LocalDateTime.ofInstant(clock.instant(),ZoneOffset.UTC))!=1)
@@ -34,5 +31,20 @@ public class ContentBookmarkTransactionService {
             // 表同时存在ID主键与用户/作品唯一键；不能把随机ID碰撞误报为已收藏。
             if(bookmarks.findExisting(user,contentId)==null)throw duplicate;
         }
+    }
+    @Transactional(isolation=Isolation.READ_COMMITTED)
+    public void unbookmark(String contentId,SessionPrincipal actor){
+        String user=authorize(actor);
+        // 只锁父行维持与收藏/物理清理一致的顺序，不检查公开状态、修订或素材。
+        if(bookmarks.lockTarget(contentId)==null)return;
+        int removed=bookmarks.delete(user,contentId);
+        if(removed!=0 && removed!=1)throw new BusinessException(ErrorCode.DEPENDENCY_UNAVAILABLE,"取消收藏数据暂不可用");
+    }
+    private String authorize(SessionPrincipal actor){
+        String user=actor.user().id();var account=accounts.findByIdForShare(user);
+        if(account==null || account.authVersion()==null || account.authVersion()!=actor.authVersion())throw new BusinessException(ErrorCode.AUTHENTICATION_REQUIRED);
+        if(!account.active())throw new BusinessException(ErrorCode.ACCOUNT_RESTRICTED);
+        if(!account.emailVerified())throw new BusinessException(ErrorCode.PERMISSION_DENIED);
+        return user;
     }
 }

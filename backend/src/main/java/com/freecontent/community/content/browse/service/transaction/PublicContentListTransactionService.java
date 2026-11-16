@@ -6,15 +6,10 @@ import com.freecontent.community.content.browse.dto.*;
 import com.freecontent.community.content.browse.mapper.PublicContentMapper;
 import com.freecontent.community.content.browse.mapper.PublicContentMapper.*;
 import com.freecontent.community.content.browse.model.PublicContentListQuery;
-import com.freecontent.community.content.browse.service.read.PublicContentAssembler;
 import com.freecontent.community.user.service.read.PublicUserReader;
-import com.freecontent.community.content.service.read.ContentLikeReader;
-import com.freecontent.community.content.service.read.ContentBookmarkReader;
-import com.freecontent.community.content.model.persistence.ContentLikeState;
+import com.freecontent.community.content.service.read.PublicContentSummaryReader;
 import java.time.*;
 import java.util.*;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.*;
 
@@ -23,12 +18,10 @@ import org.springframework.transaction.annotation.*;
 public class PublicContentListTransactionService {
     private final PublicContentMapper contents;
     private final PublicUserReader users;
-    private final PublicContentAssembler assembler;
     private final PublicContentCursor cursors;
-    private final ContentLikeReader likes;
-    private final ContentBookmarkReader bookmarks;
-    public PublicContentListTransactionService(PublicContentMapper contents, PublicUserReader users, PublicContentAssembler assembler, PublicContentCursor cursors, ContentLikeReader likes, ContentBookmarkReader bookmarks) {
-        this.contents = contents; this.users = users; this.assembler = assembler; this.cursors = cursors; this.likes = likes; this.bookmarks = bookmarks;
+    private final PublicContentSummaryReader summaries;
+    public PublicContentListTransactionService(PublicContentMapper contents, PublicUserReader users, PublicContentCursor cursors, PublicContentSummaryReader summaries) {
+        this.contents = contents; this.users = users; this.cursors = cursors; this.summaries = summaries;
     }
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public ContentPageView list(PublicContentListQuery query, String viewerId) {
@@ -40,36 +33,7 @@ public class PublicContentListTransactionService {
         boolean more = scanned.size() > query.limit();
         var rows = scanned.subList(0, Math.min(query.limit(), scanned.size()));
         if (rows.isEmpty()) return new ContentPageView(List.of(), null, false, query.snapshotAt());
-        var revisions = rows.stream().map(PublishedRow::revisionId).toList();
-        var authors = rows.stream().map(PublishedRow::authorId).distinct().toList();
-        Map<String, List<AssetRow>> assets = new HashMap<>();
-        for (var value : contents.findAssetsForRevisions(revisions)) {
-            assets.computeIfAbsent(value.revisionId(), ignored -> new ArrayList<>()).add(
-                    new AssetRow(value.assetId(), value.usageType(), value.position(), value.ownerId(), value.scene(), value.state()));
-        }
-        Map<String, List<TagRow>> tags = new HashMap<>();
-        for (var value : contents.findTagsForRevisions(revisions)) {
-            tags.computeIfAbsent(value.revisionId(), ignored -> new ArrayList<>()).add(new TagRow(value.id(), value.name(), value.description(), value.status(), value.version()));
-        }
-        var profiles = query.authorId() == null
-                ? users.readAll(authors).stream().collect(Collectors.toMap(value -> value.id(), Function.identity()))
-                : Map.of(query.authorId(), author);
-        var counts = contents.countVisibleByAuthors(authors).stream().collect(Collectors.toMap(AuthorCount::authorId, AuthorCount::visibleCount));
-        var likeStates = likes.readAll(rows.stream().map(PublishedRow::id).toList(),viewerId);
-        var bookmarkedIds = bookmarks.readAll(rows.stream().map(PublishedRow::id).toList(),viewerId);
-        List<PublicContentSummaryView> items = new ArrayList<>();
-        for (var row : rows) {
-            // 只跳过纯投影识别的数据异常；所有数据库/批量读取故障均在循环外向上返回503。
-            try {
-                assembler.requirePublicRevision(row);
-                var media = assembler.media(row, assets.getOrDefault(row.revisionId(), List.of()));
-                var labels = assembler.tags(tags.getOrDefault(row.revisionId(), List.of()));
-                items.add(PublicContentSummaryView.from(assembler.content(row, media, labels, profiles.get(row.authorId()), counts.getOrDefault(row.authorId(), 0L),
-                        likeStates.getOrDefault(row.id(),ContentLikeState.none(row.id())),bookmarkedIds.contains(row.id()))));
-            } catch (BusinessException ex) {
-                if (ex.errorCode() != ErrorCode.RESOURCE_NOT_FOUND && ex.errorCode() != ErrorCode.DEPENDENCY_UNAVAILABLE) throw ex;
-            }
-        }
+        var items = summaries.readAll(rows, viewerId, query.authorId() == null ? null : Map.of(query.authorId(), author));
         var last = rows.get(rows.size() - 1);
         String next = more ? cursors.next(query, last.firstPublishedAt().toInstant(ZoneOffset.UTC), last.id()) : null;
         return new ContentPageView(items, next, more, query.snapshotAt());

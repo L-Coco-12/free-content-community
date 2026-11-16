@@ -27,8 +27,21 @@ public class ContentBookmarkController {
     public ResponseEntity<Void> bookmark(
             @Parameter(schema=@Schema(minLength=1,maxLength=64,pattern="^[A-Za-z0-9_-]+$")) @PathVariable String contentId,
             @Parameter(hidden=true) @AuthenticationPrincipal SessionPrincipal actor,HttpServletRequest request){
+        requireNoInput(request);
+        service.bookmark(contentId,actor,request.getRemoteAddr());return ResponseEntity.noContent().build();
+    }
+    @DeleteMapping("/{contentId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(operationId="unbookmarkContent",summary="取消本人收藏",security=@SecurityRequirement(name="bearerAuth"))
+    @ApiErrorResponses
+    public ResponseEntity<Void> unbookmark(
+            @Parameter(schema=@Schema(minLength=1,maxLength=64,pattern="^[A-Za-z0-9_-]+$")) @PathVariable String contentId,
+            @Parameter(hidden=true) @AuthenticationPrincipal SessionPrincipal actor,HttpServletRequest request){
+        requireNoInput(request);
+        service.unbookmark(contentId,actor,request.getRemoteAddr());return ResponseEntity.noContent().build();
+    }
+    private void requireNoInput(HttpServletRequest request){
         if(!request.getParameterMap().isEmpty() || request.getContentLengthLong()>0 || request.getHeader("Transfer-Encoding")!=null)
             throw new BusinessException(MALFORMED_REQUEST,"收藏接口不接受查询参数或请求体");
-        service.bookmark(contentId,actor,request.getRemoteAddr());return ResponseEntity.noContent().build();
     }
 }

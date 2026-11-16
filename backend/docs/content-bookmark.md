@@ -32,8 +32,8 @@ V27新增content_bookmark，服务器生成稳定ID，(user_id,content_id)唯一
 游客固定false且不查询收藏表；登录用户每页只增加一次查询。非空全站列表游客6次、登录7次
 业务SQL，不按卡片循环查询。读取依赖故障返回503，不静默变成false或空列表。
 
-当前DTO没有收藏计数，本次不新增计数或统计字段。收藏列表GET和取消DELETE仍待单独实现，
-不能把写入及标记回显当成这两个接口已经接通。
+当前DTO没有收藏计数，本次不新增计数或统计字段。[取消收藏DELETE](content-unbookmark.md)已接通，
+[本人收藏列表GET](content-bookmark-list.md)已接通，按收藏关系时间和ID倒序，仅返回当前可见作品。
 
 ## 配额与错误
 
@@ -45,7 +45,7 @@ V27新增content_bookmark，服务器生成稳定ID，(user_id,content_id)唯一
 | CONTENT_BOOKMARK_USER_PER_MINUTE_LIMIT | 60/分钟 |
 | CONTENT_BOOKMARK_REDIS_KEY_PREFIX | fc:content: |
 
-独立{content-bookmark}键，与点赞/取消及公开查询隔离；重复204也计数，数据库失败不自动退还。
+收藏PUT与取消DELETE共享独立{content-bookmark}键，与点赞/取消及公开查询隔离；重复204也计数，数据库失败不自动退还。
 401身份无效，403账号受限或资格不足，404目标当前不可见，422 ID错误，400额外输入，
 429附Retry-After；数据/限流依赖故障503。重复不使用409，也不需要业务幂等键。
 

@@ -73,6 +73,137 @@ class ContentBookmarkFlowIT {
         assertEquals("3",redis.opsForValue().get(PREFIX+"{content-bookmark}:user:"+TokenDigest.sha256(viewer.getId())));
     }
 
+    @Test void deleteAndRepeatedDeletesRemoveOnlyTheCurrentBookmarkAndReadBackFalse() throws Exception {
+        var content=published(owner());var viewer=owner();String token=token(viewer);
+        var before=jdbc.queryForMap("SELECT version,updated_at FROM community_content WHERE id=?",content.id());
+        assertEquals(204,bookmark(content.id(),token).statusCode());
+        for(int i=0;i<3;i++){
+            var response=unbookmark(content.id(),token);assertEquals(204,response.statusCode(),response.body());assertEquals("",response.body());
+            assertEquals("no-store",response.headers().firstValue("Cache-Control").orElseThrow());
+        }
+        empty(content);assertEquals(before,jdbc.queryForMap("SELECT version,updated_at FROM community_content WHERE id=?",content.id()));
+        var detail=get("/api/v1/contents/"+content.id(),token);assertEquals(200,detail.statusCode(),detail.body());
+        assertFalse(JsonPath.<Boolean>read(detail.body(),"$.data.viewerHasBookmarked"));
+        assertEquals("4",redis.opsForValue().get(PREFIX+"{content-bookmark}:user:"+TokenDigest.sha256(viewer.getId())));
+    }
+
+    @Test void absentRelationshipsAndUnknownContentIdsReturn204() throws Exception {
+        var content=published(owner());String token=token(owner());
+        assertEquals(204,unbookmark(content.id(),token).statusCode());assertEquals(204,unbookmark(id(),token).statusCode());empty(content);
+    }
+    @Test void deletingOneUsersBookmarkDoesNotChangeOtherUsersRecords() throws Exception {
+        var content=published(owner());var a=owner();var b=owner();String at=token(a),bt=token(b);
+        assertEquals(204,bookmark(content.id(),at).statusCode());assertEquals(204,bookmark(content.id(),bt).statusCode());
+        var other=jdbc.queryForMap("SELECT * FROM content_bookmark WHERE user_id=? AND content_id=?",b.getId(),content.id());
+        assertEquals(204,unbookmark(content.id(),token(owner())).statusCode());assertEquals(2,count(content));
+        assertEquals(204,unbookmark(content.id(),at).statusCode());assertEquals(1,count(content));
+        assertEquals(other,jdbc.queryForMap("SELECT * FROM content_bookmark WHERE user_id=? AND content_id=?",b.getId(),content.id()));
+        assertTrue(JsonPath.<Boolean>read(get("/api/v1/contents/"+content.id(),bt).body(),"$.data.viewerHasBookmarked"));
+        assertFalse(JsonPath.<Boolean>read(get("/api/v1/contents/"+content.id(),at).body(),"$.data.viewerHasBookmarked"));
+    }
+    @ParameterizedTest @CsvSource({"ACTIVE,WITHDRAWN","ACTIVE,TAKEN_DOWN","DELETED,PUBLISHED","ACTIVE,UNPUBLISHED"})
+    void existingBookmarksCanBeRemovedAfterTheTargetBecomesInvisible(String lifecycle,String publication) throws Exception {
+        var content=published(owner());String token=token(owner());assertEquals(204,bookmark(content.id(),token).statusCode());
+        jdbc.update("UPDATE community_content SET lifecycle=?,publication_status=? WHERE id=?",lifecycle,publication,content.id());
+        var response=unbookmark(content.id(),token);assertEquals(204,response.statusCode(),response.body());assertEquals("",response.body());empty(content);
+    }
+    @Test void cleanupDoesNotReadThePublishedRevisionOrItsReferences() throws Exception {
+        var content=published(owner());String token=token(owner());assertEquals(204,bookmark(content.id(),token).statusCode());
+        jdbc.update("UPDATE community_content SET published_revision_id=NULL WHERE id=?",content.id());
+        assertEquals(204,unbookmark(content.id(),token).statusCode());empty(content);
+    }
+    @ParameterizedTest @ValueSource(strings={"WRITE_BLOCKED","DISABLED"})
+    void restrictedActorsCannotUnbookmark(String state) throws Exception {
+        var content=published(owner());var actor=owner();String token=token(actor);assertEquals(204,bookmark(content.id(),token).statusCode());
+        jdbc.update("UPDATE app_user SET account_status=? WHERE id=?",state,actor.getId());
+        problem(unbookmark(content.id(),token),403,"ACCOUNT_RESTRICTED");assertEquals(1,count(content));
+    }
+    @ParameterizedTest @ValueSource(strings={"auth_version=auth_version+1","account_status='WRITE_BLOCKED'","email_verified=0"})
+    void cancellationRechecksCurrentQualificationsAfterAuthentication(String change) throws Exception {
+        var content=published(owner());var actor=owner();String token=token(actor);assertEquals(204,bookmark(content.id(),token).statusCode());
+        doAnswer(call->{var principal=call.callRealMethod();jdbc.update("UPDATE app_user SET "+change+" WHERE id=?",actor.getId());return principal;}).when(authentication).authenticate(token);
+        String code=change.startsWith("auth_version")?"AUTHENTICATION_REQUIRED":change.startsWith("account_status")?"ACCOUNT_RESTRICTED":"PERMISSION_DENIED";
+        problem(unbookmark(content.id(),token),code.equals("AUTHENTICATION_REQUIRED")?401:403,code);assertEquals(1,count(content));
+    }
+    @Test void invalidIdentityAndInputCannotDeleteTheBookmark() throws Exception {
+        var content=published(owner());String token=token(owner());assertEquals(204,bookmark(content.id(),token).statusCode());
+        problem(unbookmark(content.id(),null),401,"AUTHENTICATION_REQUIRED");problem(unbookmark(content.id(),"bad"),401,"AUTHENTICATION_REQUIRED");
+        problem(unbookmark("bad!",token),422,"VALIDATION_ERROR");
+        problem(send("DELETE","/api/v1/me/bookmarks/"+content.id()+"?userId=someone",token),400,"MALFORMED_REQUEST");
+        var request=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/v1/me/bookmarks/"+content.id())).header("Authorization","Bearer "+token).method("DELETE",HttpRequest.BodyPublishers.ofString("{}"));
+        problem(http.send(request.build(),HttpResponse.BodyHandlers.ofString()),400,"MALFORMED_REQUEST");assertEquals(1,count(content));
+    }
+    @Test void bookmarkAndUnbookmarkConsumeTheSameUserBudget() throws Exception {
+        var content=published(owner());var actor=owner();String token=token(actor);String key=PREFIX+"{content-bookmark}:user:"+TokenDigest.sha256(actor.getId());
+        redis.opsForValue().set(key,"59",Duration.ofMinutes(1));assertEquals(204,bookmark(content.id(),token).statusCode());
+        problem(unbookmark(content.id(),token),429,"RATE_LIMITED");assertEquals(1,count(content));
+        redis.opsForValue().set(key,"59",Duration.ofMinutes(1));assertEquals(204,unbookmark(content.id(),token).statusCode());
+        problem(bookmark(content.id(),token),429,"RATE_LIMITED");empty(content);
+    }
+    @Test void cancellationUsesTheSharedSourceBudgetAndIsStillIndependentOfLikes() throws Exception {
+        var content=published(owner());String token=token(owner());assertEquals(204,bookmark(content.id(),token).statusCode());
+        redis.opsForValue().set(PREFIX+"{content-bookmark}:source:"+TokenDigest.sha256("127.0.0.1"),"119",Duration.ofMinutes(1));
+        assertEquals(204,unbookmark(content.id(),token).statusCode());problem(bookmark(content.id(),token(owner())),429,"RATE_LIMITED");
+        assertEquals(204,send("PUT","/api/v1/contents/"+content.id()+"/likes/me",token).statusCode());empty(content);
+    }
+    @Test void simultaneousRepeatedDeletesAreHarmless() throws Exception {
+        var content=published(owner());String token=token(owner());assertEquals(204,bookmark(content.id(),token).statusCode());
+        var pool=Executors.newFixedThreadPool(8);var start=new CountDownLatch(1);
+        try{
+            var futures=new ArrayList<Future<Integer>>();for(int i=0;i<12;i++)futures.add(pool.submit(()->{assertTrue(start.await(5,TimeUnit.SECONDS));return unbookmark(content.id(),token).statusCode();}));
+            start.countDown();for(var result:futures)assertEquals(204,result.get(20,TimeUnit.SECONDS));
+        }finally{start.countDown();pool.shutdownNow();}
+        empty(content);
+    }
+    @Test void deleteWaitsForAnUncommittedBookmarkAndThenRemovesIt() throws Exception {
+        var content=published(owner());String token=token(owner());var pool=Executors.newSingleThreadExecutor();var entered=new CountDownLatch(1);
+        var removal=new java.util.concurrent.atomic.AtomicReference<Future<Integer>>();
+        doAnswer(call->{
+            int inserted=realInsert(call.getArgument(0),call.getArgument(1),call.getArgument(2),call.getArgument(3));
+            removal.set(pool.submit(()->{entered.countDown();return unbookmark(content.id(),token).statusCode();}));
+            assertTrue(entered.await(5,TimeUnit.SECONDS));assertThrows(TimeoutException.class,()->removal.get().get(200,TimeUnit.MILLISECONDS));return inserted;
+        }).when(writes).insert(anyString(),anyString(),anyString(),any());
+        try{assertEquals(204,bookmark(content.id(),token).statusCode());assertEquals(204,removal.get().get(5,TimeUnit.SECONDS));}finally{pool.shutdownNow();}
+        empty(content);
+    }
+    @Test void aNewBookmarkWaitsForAnUncommittedDeleteAndThenCreatesANewFact() throws Exception {
+        var content=published(owner());var actor=owner();String token=token(actor);assertEquals(204,bookmark(content.id(),token).statusCode());
+        String previous=jdbc.queryForObject("SELECT id FROM content_bookmark WHERE user_id=? AND content_id=?",String.class,actor.getId(),content.id());
+        var pool=Executors.newSingleThreadExecutor();var entered=new CountDownLatch(1);var pending=new java.util.concurrent.atomic.AtomicReference<Future<Integer>>();
+        doAnswer(call->{
+            int deleted=sqlSession.delete(ContentBookmarkMapper.class.getName()+".delete",Map.of("user",call.getArgument(0),"content",call.getArgument(1)));
+            pending.set(pool.submit(()->{entered.countDown();return bookmark(content.id(),token).statusCode();}));
+            assertTrue(entered.await(5,TimeUnit.SECONDS));assertThrows(TimeoutException.class,()->pending.get().get(200,TimeUnit.MILLISECONDS));return deleted;
+        }).when(writes).delete(anyString(),anyString());
+        try{assertEquals(204,unbookmark(content.id(),token).statusCode());assertEquals(204,pending.get().get(5,TimeUnit.SECONDS));}finally{pool.shutdownNow();}
+        assertEquals(1,count(content));assertNotEquals(previous,jdbc.queryForObject("SELECT id FROM content_bookmark WHERE user_id=? AND content_id=?",String.class,actor.getId(),content.id()));
+    }
+    @Test void failureAfterARealDeleteRestoresTheOriginalIdAndCreatedTime() throws Exception {
+        var content=published(owner());var actor=owner();String token=token(actor);assertEquals(204,bookmark(content.id(),token).statusCode());
+        var before=jdbc.queryForMap("SELECT * FROM content_bookmark WHERE user_id=? AND content_id=?",actor.getId(),content.id());
+        doAnswer(call->{sqlSession.delete(ContentBookmarkMapper.class.getName()+".delete",Map.of("user",call.getArgument(0),"content",call.getArgument(1)));throw new TransientDataAccessResourceException("private delete detail");})
+                .when(writes).delete(anyString(),anyString());
+        var response=unbookmark(content.id(),token);problem(response,503,"DEPENDENCY_UNAVAILABLE");assertFalse(response.body().contains("private delete"));
+        assertEquals(before,jdbc.queryForMap("SELECT * FROM content_bookmark WHERE user_id=? AND content_id=?",actor.getId(),content.id()));
+        doAnswer(call->sqlSession.delete(ContentBookmarkMapper.class.getName()+".delete",Map.of("user",call.getArgument(0),"content",call.getArgument(1)))).when(writes).delete(anyString(),anyString());
+        assertEquals(204,unbookmark(content.id(),token).statusCode());empty(content);
+    }
+    @Test void bookmarkingAgainAfterCancellationCreatesANewIdAndTimestamp() throws Exception {
+        var content=published(owner());var actor=owner();String token=token(actor);assertEquals(204,bookmark(content.id(),token).statusCode());
+        String previous=jdbc.queryForObject("SELECT id FROM content_bookmark WHERE user_id=? AND content_id=?",String.class,actor.getId(),content.id());
+        var created=jdbc.queryForObject("SELECT created_at FROM content_bookmark WHERE id=?",java.time.LocalDateTime.class,previous);
+        assertEquals(204,unbookmark(content.id(),token).statusCode());assertEquals(204,bookmark(content.id(),token).statusCode());
+        assertEquals(1,count(content));String current=jdbc.queryForObject("SELECT id FROM content_bookmark WHERE user_id=? AND content_id=?",String.class,actor.getId(),content.id());
+        assertNotEquals(previous,current);assertTrue(jdbc.queryForObject("SELECT created_at FROM content_bookmark WHERE id=?",java.time.LocalDateTime.class,current).isAfter(created));
+    }
+    @Test void bothPublicListsReadBackFalseAfterCancellation() throws Exception {
+        var author=owner();var content=published(author);String tag=tag(author,List.of(content));String token=token(owner());
+        assertEquals(204,bookmark(content.id(),token).statusCode());assertEquals(204,unbookmark(content.id(),token).statusCode());
+        for(String path:List.of("/api/v1/contents?tagId="+tag,"/api/v1/users/"+author.getId()+"/contents")){
+            var response=get(path,token);assertEquals(200,response.statusCode(),response.body());assertFalse(JsonPath.<Boolean>read(response.body(),"$.data.items[0].viewerHasBookmarked"));
+        }
+    }
+
     @Test void missingOrInvalidIdentityCannotBookmark() throws Exception {
         var content=published(owner());problem(bookmark(content.id(),null),401,"AUTHENTICATION_REQUIRED");
         problem(bookmark(content.id(),"bad"),401,"AUTHENTICATION_REQUIRED");problem(bookmark(content.id(),"0".repeat(43)),401,"AUTHENTICATION_REQUIRED");empty(content);
@@ -247,6 +378,7 @@ class ContentBookmarkFlowIT {
     }
     private String token(UserAccount owner){return sessions.create(owner.getId(),owner.getAuthVersion(),"bookmark-it").accessToken();}
     private HttpResponse<String> bookmark(String content,String token) throws Exception{return send("PUT","/api/v1/me/bookmarks/"+content,token);}
+    private HttpResponse<String> unbookmark(String content,String token) throws Exception{return send("DELETE","/api/v1/me/bookmarks/"+content,token);}
     private HttpResponse<String> get(String path,String token) throws Exception{return send("GET",path,token);}
     private HttpResponse<String> send(String method,String path,String token) throws Exception {
         var request=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+path)).timeout(Duration.ofSeconds(20)).method(method,HttpRequest.BodyPublishers.noBody());

@@ -3,6 +3,20 @@
   "sourceSha256": "e3359e24fa1182287772810ac16968e83533022ed40f721f239ba3b58af01b21",
   "extensionSources": ["backend/docs/user-avatar-access.md"],
   "operations": {
+    "unbookmarkContent": {
+      "path": "/api/v1/me/bookmarks/{contentId}",
+      "method": "delete",
+      "responses": {
+        "204": [],
+        "400": ["MALFORMED_REQUEST"],
+        "401": ["AUTHENTICATION_REQUIRED"],
+        "403": ["PERMISSION_DENIED", "ACCOUNT_RESTRICTED"],
+        "422": ["VALIDATION_ERROR"],
+        "429": ["RATE_LIMITED"],
+        "500": ["INTERNAL_ERROR"],
+        "503": ["DEPENDENCY_UNAVAILABLE"]
+      }
+    },
     "bookmarkContent": {
       "path": "/api/v1/me/bookmarks/{contentId}",
       "method": "put",
@@ -1380,6 +1394,21 @@
         "503": [
           "DEPENDENCY_UNAVAILABLE"
         ]
+      }
+    },
+    "listMyBookmarks": {
+      "path": "/api/v1/me/bookmarks",
+      "method": "get",
+      "responses": {
+        "200": [],
+        "400": ["MALFORMED_REQUEST", "CURSOR_INVALID"],
+        "401": ["AUTHENTICATION_REQUIRED"],
+        "403": ["PERMISSION_DENIED", "ACCOUNT_RESTRICTED"],
+        "410": ["CURSOR_EXPIRED"],
+        "422": ["VALIDATION_ERROR"],
+        "429": ["RATE_LIMITED"],
+        "500": ["INTERNAL_ERROR"],
+        "503": ["DEPENDENCY_UNAVAILABLE"]
       }
     },
     "listPublicContents": {
