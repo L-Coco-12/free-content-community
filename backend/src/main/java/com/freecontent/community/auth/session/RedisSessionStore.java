@@ -15,6 +15,8 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
+import java.util.ArrayList;
+import java.util.HashSet;
 
 @Component
 public class RedisSessionStore {
@@ -26,6 +28,8 @@ public class RedisSessionStore {
     private final DefaultRedisScript<List> read;
     private final DefaultRedisScript<Long> revoke;
     private final DefaultRedisScript<Long> revokeBeforeVersion;
+    private final DefaultRedisScript<List> list;
+    private final DefaultRedisScript<Long> revokeOwned;
 
     public RedisSessionStore(StringRedisTemplate redis, LoginProperties properties, Clock clock) {
         this.redis = redis;
@@ -43,6 +47,12 @@ public class RedisSessionStore {
         revokeBeforeVersion = new DefaultRedisScript<>();
         revokeBeforeVersion.setLocation(new ClassPathResource("redis/session-revoke-before-version.lua"));
         revokeBeforeVersion.setResultType(Long.class);
+        list = new DefaultRedisScript<>();
+        list.setLocation(new ClassPathResource("redis/session-list.lua"));
+        list.setResultType(List.class);
+        revokeOwned = new DefaultRedisScript<>();
+        revokeOwned.setLocation(new ClassPathResource("redis/session-revoke-owned.lua"));
+        revokeOwned.setResultType(Long.class);
     }
 
     public IssuedSession create(String userId, long authVersion, String deviceLabel) {
@@ -119,6 +129,58 @@ public class RedisSessionStore {
         } catch (DataAccessException ex) {
             throw unavailable();
         }
+    }
+
+    public List<SessionMetadata> listActive(String userId,long authVersion,String currentId,String currentDigest) {
+        requireCurrentIdentity(userId,authVersion,currentId,currentDigest);
+        try {
+            List<?> values=redis.execute(list,List.of(prefix()+"user:"+userId,prefix()+"token:"+currentDigest),
+                    prefix()+"token:",userId,Long.toString(authVersion),currentId,currentDigest,Long.toString(clock.millis()));
+            return metadata(values,currentId);
+        }catch(DataAccessException | IllegalArgumentException ex){throw unavailable();}
+    }
+
+    public void revokeOwned(String userId,long authVersion,String currentId,String currentDigest,String targetId) {
+        requireCurrentIdentity(userId,authVersion,currentId,currentDigest);
+        if(targetId==null || !targetId.matches("[A-Za-z0-9_-]{1,64}"))throw new BusinessException(ErrorCode.AUTHENTICATION_REQUIRED);
+        try {
+            Long result=redis.execute(revokeOwned,List.of(prefix()+"user:"+userId,prefix()+"token:"+currentDigest),
+                    prefix()+"token:",userId,Long.toString(authVersion),currentId,currentDigest,targetId,Long.toString(clock.millis()));
+            if(result==null)throw unavailable();
+            if(result==-1)throw new BusinessException(ErrorCode.AUTHENTICATION_REQUIRED);
+            if(result!=0 && result!=1)throw unavailable();
+        }catch(DataAccessException ex){throw unavailable();}
+    }
+
+    private void requireCurrentIdentity(String userId,long authVersion,String currentId,String currentDigest) {
+        if(userId==null || !userId.matches("[A-Za-z0-9_-]{1,64}") || currentId==null || !currentId.matches("[A-Za-z0-9_-]{1,64}")
+                || currentDigest==null || !currentDigest.matches("[a-f0-9]{64}") || authVersion<1)throw new BusinessException(ErrorCode.AUTHENTICATION_REQUIRED);
+    }
+
+    private List<SessionMetadata> metadata(List<?> values,String currentId) {
+        if(values==null || values.isEmpty() || !(values.get(0) instanceof Number status)
+                || status.doubleValue()!=status.longValue())throw unavailable();
+        if(status.longValue()==0 && values.size()==1)throw new BusinessException(ErrorCode.AUTHENTICATION_REQUIRED);
+        if(status.longValue()!=1 || (values.size()-1)%5!=0 || values.size()>501)throw unavailable();
+        var rows=new ArrayList<SessionMetadata>();
+        var ids=new HashSet<String>();
+        for(int offset=1;offset<values.size();offset+=5){
+            for(int i=0;i<5;i++)if(!(values.get(offset+i) instanceof String))throw unavailable();
+            String id=(String)values.get(offset),label=(String)values.get(offset+4);
+            long created=timestamp((String)values.get(offset+1));
+            long expires=timestamp((String)values.get(offset+2));
+            long seen=timestamp((String)values.get(offset+3));
+            if(!id.matches("[A-Za-z0-9_-]{1,64}") || !ids.add(id) || expires<=created || seen<created || seen>=expires
+                    || label.codePointCount(0,label.length())>120)throw unavailable();
+            rows.add(new SessionMetadata(id,Instant.ofEpochMilli(created),Instant.ofEpochMilli(expires),Instant.ofEpochMilli(seen),label.strip()));
+        }
+        if(!ids.contains(currentId))throw unavailable();
+        return List.copyOf(rows);
+    }
+
+    private long timestamp(String value){
+        if(!value.matches("0|[1-9][0-9]*"))throw unavailable();
+        return Long.parseLong(value);
     }
 
     private String prefix() { return properties.redisKeyPrefix() + "{sessions}:"; }

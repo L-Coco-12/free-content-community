@@ -41,8 +41,9 @@ src/main/java/com/freecontent/community/
 │   ├── ratelimit/ContentQueryRateLimiter.java
 │   ├── service/read/             # ContentWorkspaceReader / PublicContentVisibilityReader
 │   └── validation/               # 草稿结构及媒体/标签引用的共享校验
-├── notification/                 # 当前仅下架作者通知的事务内写入；尚无列表/已读 API
-│   └── model/mapper/service/ModerationNotificationWriter.java
+├── notification/                 # 本人通知列表和下架通知的事务内写入
+│   ├── controller/dto/cursor/config/ratelimit/
+│   └── model/mapper/service/
 ├── common/
 │   ├── api/                      # 响应、请求标识、公共响应头及文档注解
 │   ├── error/                    # RFC 9457 错误响应
@@ -57,12 +58,13 @@ src/main/java/com/freecontent/community/
 | 业务 | 行为约定与真实调用链 |
 | --- | --- |
 | 认证及会话 | [auth](docs/auth.md) |
-| 账号与资料 | [user](docs/user.md) · [公开头像展示](docs/user-avatar-access.md) |
+| 账号与资料 | [user](docs/user.md) · [公开头像展示](docs/user-avatar-access.md) · [本人会话列表](docs/user-sessions.md) · [指定会话撤销](docs/user-session-revocation.md) |
 | 上传与媒体 | [media](docs/media.md) · [图片自动校验](docs/media-processing.md) |
 | 标签 | [tag](docs/tag.md) |
-| 内容创作 | [workspace](docs/content-workspace.md) · [历史修订新草稿](docs/content-draft-creation.md) · [撤回](docs/content-publication-withdrawal.md) · [重新公开](docs/content-republication.md) · [删除](docs/content-deletion.md) · [恢复](docs/content-restoration.md) |
+| 内容创作 | [workspace](docs/content-workspace.md) · [修订历史](docs/content-revision-history.md) · [历史修订新草稿](docs/content-draft-creation.md) · [撤回](docs/content-publication-withdrawal.md) · [重新公开](docs/content-republication.md) · [删除](docs/content-deletion.md) · [恢复](docs/content-restoration.md) |
 | 内容审核 | [review](docs/content-review.md) |
 | 内容互动 | [点赞](docs/content-like.md) · [取消点赞](docs/content-unlike.md) · [收藏](docs/content-bookmark.md) · [取消收藏](docs/content-unbookmark.md) |
+| 通知 | [本人通知列表](docs/development.md#本人通知列表) |
 | 运营内容 | [后台内容列表](docs/content-admin-list.md) · [后台内容详情](docs/content-admin-detail.md) · [强制下架](docs/content-take-down.md) |
 | 已发布内容浏览 | [详情](docs/content-browse.md) · [列表](docs/content-list.md) · [作者作品](docs/content-author-list.md) · [媒体取址](docs/content-media-access.md) |
 | 错误契约与 OpenAPI | [api-errors](docs/api-errors.md) |

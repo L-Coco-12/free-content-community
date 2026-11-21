@@ -1,5 +1,8 @@
 # 内容创作与工作区
 
+`GET /api/v1/creator/contents/{contentId}/revisions`已接通，按修订号倒序分页返回完整修订历史，
+共用本人查询配额与读取权限，详见[修订历史](content-revision-history.md)。
+
 [返回后端入口](../README.md) · [结构与边界](../STRUCTURE.md)
 
 文中 `src/` 路径相对 `backend/`；验证数字为对应开发阶段的历史记录，当前结果以最新执行为准。

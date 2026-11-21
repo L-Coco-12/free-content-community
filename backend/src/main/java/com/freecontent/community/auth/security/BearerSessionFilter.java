@@ -40,9 +40,11 @@ public class BearerSessionFilter extends OncePerRequestFilter {
                 || ("GET".equals(request.getMethod()) && PUBLIC_READ_PATHS.contains(path));
     }
 
+    
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
+        // 仅允许单个Authorization头，且必须为Bearer类型，且token长度为43字符（Base64URL编码的32字节随机数）。
         String header = request.getHeader(HttpHeaders.AUTHORIZATION);
         try {
             if (header != null) {
@@ -56,6 +58,7 @@ public class BearerSessionFilter extends OncePerRequestFilter {
                         && isBusinessWrite(request)) {
                     throw new BusinessException(ErrorCode.ACCOUNT_RESTRICTED, "账号暂不能进行业务写入");
                 }
+                // 将认证结果放入SecurityContext，供后续Spring Security鉴权使用。
                 var authorities = principal.user().roles().stream()
                         .map(role -> new SimpleGrantedAuthority("ROLE_" + role.name())).toList();
                 var context = SecurityContextHolder.createEmptyContext();

@@ -16,6 +16,7 @@ public class ContentWorkspaceReader {
     private static final Set<String> WORKING_STATUSES = Set.of("DRAFT", "IN_REVIEW");
     private static final Set<String> PUBLISHED_STATUSES = Set.of("APPROVED");
     private static final Set<String> FROZEN_STATUSES = Set.of("IN_REVIEW", "APPROVED", "REJECTED", "CANCELLED");
+    private static final Set<String> ALL_STATUSES = Set.of("DRAFT", "IN_REVIEW", "APPROVED", "REJECTED", "CANCELLED");
     private final ContentReadMapper contents;
     public ContentWorkspaceReader(ContentReadMapper contents) { this.contents = contents; }
 
@@ -41,6 +42,16 @@ public class ContentWorkspaceReader {
         return revision(revisionId, contentId, FROZEN_STATUSES);
     }
 
+    public RevisionView revisionSnapshot(String contentId, RevisionRow row) {
+        return revisionView(checkedRevision(row, contentId, ALL_STATUSES));
+    }
+
+    public List<RevisionView> revisions(String contentId,List<RevisionRow> rows) {
+        var batch=loadRevisionReferences(rows);
+        return rows.stream().map(row->view(checkedRevision(row,contentId,ALL_STATUSES),
+                batch.assets().getOrDefault(row.id(),List.of()),batch.tags().getOrDefault(row.id(),List.of()))).toList();
+    }
+
     private record RevisionBatch(Map<String,RevisionRow> rows,
             Map<String,List<AssetReference>> assets,Map<String,List<String>> tags) { }
 
@@ -50,11 +61,15 @@ public class ContentWorkspaceReader {
             if (row.workingRevisionId() != null) ids.add(row.workingRevisionId());
             if (row.publishedRevisionId() != null) ids.add(row.publishedRevisionId());
         }
+        if(ids.isEmpty())return loadRevisionReferences(List.of());
+        return loadRevisionReferences(contents.findRevisions(contentsPage.stream().map(ContentRow::id).toList(),List.copyOf(ids)));
+    }
+
+    private RevisionBatch loadRevisionReferences(List<RevisionRow> revisionRows) {
         var rows = new HashMap<String,RevisionRow>();
         var assets = new HashMap<String,List<AssetReference>>();
         var tags = new HashMap<String,List<String>>();
-        if (ids.isEmpty()) return new RevisionBatch(rows,assets,tags);
-        for (var row : contents.findRevisions(contentsPage.stream().map(ContentRow::id).toList(),List.copyOf(ids))) rows.put(row.id(),row);
+        for (var row : revisionRows) rows.put(row.id(),row);
         if (!rows.isEmpty()) {
             var loadedIds = List.copyOf(rows.keySet());
             for (var asset : contents.findAssetsForRevisions(loadedIds)) {
@@ -79,9 +94,11 @@ public class ContentWorkspaceReader {
 
     private RevisionView revision(String revisionId, String contentId, Set<String> allowedStatuses) {
         if (revisionId == null) return null;
-        var row = checkedRevision(contents.findRevision(revisionId,contentId),contentId,allowedStatuses);
-        var assets = contents.findAssets(revisionId);
-        return view(row,assets,contents.findTagIds(revisionId));
+        return revisionView(checkedRevision(contents.findRevision(revisionId, contentId), contentId, allowedStatuses));
+    }
+
+    private RevisionView revisionView(RevisionRow row) {
+        return view(row, contents.findAssets(row.id()), contents.findTagIds(row.id()));
     }
 
     private RevisionView view(RevisionRow row,List<AssetReference> assets,List<String> tags) {

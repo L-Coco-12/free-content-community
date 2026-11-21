@@ -3,7 +3,9 @@ package com.freecontent.community.content.workspace.controller;
 import com.freecontent.community.auth.security.SessionPrincipal;
 import com.freecontent.community.common.api.*;
 import com.freecontent.community.content.dto.ContentWorkspace;
+import com.freecontent.community.content.dto.RevisionView;
 import com.freecontent.community.content.dto.WorkspacePage;
+import com.freecontent.community.content.workspace.dto.RevisionPage;
 import com.freecontent.community.content.workspace.service.ContentWorkspaceService;
 import com.freecontent.community.common.error.BusinessException;
 import com.freecontent.community.common.error.ProblemDetailResponse;
@@ -44,6 +46,37 @@ public class ContentWorkspaceController {
             @Parameter(hidden = true) @AuthenticationPrincipal SessionPrincipal principal,HttpServletRequest request) {
         validateQuery(request,LIST_PARAMETERS);
         return ApiResponse.of(service.listMyContents(page,pageSize,lifecycle,publicationStatus,kind,principal,request.getRemoteAddr()),MDC.get(RequestIdFilter.MDC_KEY));
+    }
+
+    @GetMapping(value = "/{contentId}/revisions", produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(operationId = "listMyRevisions",summary = "查询本人内容修订历史",
+            description = "本人范围，包含回收站内容；按修订号和ID倒序返回各状态完整修订",security = @SecurityRequirement(name = "bearerAuth"))
+    @ApiErrorResponses(RESOURCE_NOT_FOUND)
+    public ApiResponse<RevisionPage> listMyRevisions(
+            @Parameter(schema = @Schema(minLength = 1,maxLength = 64,pattern = "^[A-Za-z0-9_-]+$")) @PathVariable String contentId,
+            @Parameter(schema = @Schema(type = "integer",minimum = "1",defaultValue = "1")) @RequestParam(required = false) String page,
+            @Parameter(schema = @Schema(type = "integer",minimum = "1",maximum = "100",defaultValue = "20")) @RequestParam(required = false) String pageSize,
+            @Parameter(hidden = true) @AuthenticationPrincipal SessionPrincipal principal,HttpServletRequest request) {
+        validateQuery(request,Set.of("page","pageSize"));
+        if(request.getContentLengthLong()>0 || request.getHeader("Transfer-Encoding")!=null)
+            throw new BusinessException(MALFORMED_REQUEST,"修订历史查询不接受请求体");
+        return ApiResponse.of(service.listMyRevisions(contentId,page,pageSize,principal,request.getRemoteAddr()),MDC.get(RequestIdFilter.MDC_KEY));
+    }
+
+    @GetMapping(value = "/{contentId}/revisions/{revisionId}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(operationId = "getMyRevision", summary = "查询本人指定修订快照",
+            security = @SecurityRequirement(name = "bearerAuth"))
+    @ApiErrorResponses(RESOURCE_NOT_FOUND)
+    public ApiResponse<RevisionView> getMyRevision(
+            @Parameter(schema = @Schema(minLength = 1, maxLength = 64, pattern = "^[A-Za-z0-9_-]+$")) @PathVariable String contentId,
+            @Parameter(schema = @Schema(minLength = 1, maxLength = 64, pattern = "^[A-Za-z0-9_-]+$")) @PathVariable String revisionId,
+            @Parameter(hidden = true) @AuthenticationPrincipal SessionPrincipal principal, HttpServletRequest request) {
+        validateQuery(request, Set.of());
+        if (request.getContentLengthLong() > 0 || request.getHeader("Transfer-Encoding") != null) {
+            throw new BusinessException(MALFORMED_REQUEST, "修订详情查询不接受请求体");
+        }
+        var revision = service.getMyRevision(contentId, revisionId, principal, request.getRemoteAddr());
+        return ApiResponse.of(revision, MDC.get(RequestIdFilter.MDC_KEY));
     }
 
     @GetMapping(value = "/{contentId}", produces = MediaType.APPLICATION_JSON_VALUE)

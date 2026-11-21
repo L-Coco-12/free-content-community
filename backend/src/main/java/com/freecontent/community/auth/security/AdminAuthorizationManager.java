@@ -26,6 +26,11 @@ public class AdminAuthorizationManager implements AuthorizationManager<RequestAu
 
     private static final PathPatternParser PATTERNS = new PathPatternParser();
     private static final List<Rule> RULES = List.of(
+            new Rule(HttpMethod.GET, "/api/v1/admin/roles", Set.of(UserRole.ADMIN)),
+            new Rule(HttpMethod.GET, "/api/v1/admin/users", Set.of(UserRole.ADMIN)),
+            new Rule(HttpMethod.GET, "/api/v1/admin/users/{userId}", Set.of(UserRole.ADMIN)),
+            new Rule(HttpMethod.PUT, "/api/v1/admin/users/{userId}/restriction", Set.of(UserRole.ADMIN)),
+            new Rule(HttpMethod.PUT, "/api/v1/admin/users/{userId}/roles", Set.of(UserRole.ADMIN)),
             new Rule(HttpMethod.GET, "/api/v1/admin/contents", Set.of(UserRole.MODERATOR, UserRole.ADMIN)),
             new Rule(HttpMethod.GET, "/api/v1/admin/contents/{contentId}", Set.of(UserRole.MODERATOR, UserRole.ADMIN)),
             new Rule(HttpMethod.POST, "/api/v1/admin/contents/{contentId}/take-downs", Set.of(UserRole.MODERATOR, UserRole.ADMIN)),

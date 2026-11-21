@@ -6,6 +6,62 @@
 
 ## 接口行为与约定
 
+### 查询后台脱敏用户列表
+
+`GET /api/v1/admin/users` 对应 `listAdminUsers`，仅邮箱已验证且具备 `user:read` 的管理员可用。
+支持精确 `userId` 和账号 `status`，两者同时传入时取交集。默认第 1 页、每页 20 条，最多 100 条。
+列表按注册时间和用户 ID 倒序，`total` 为筛选命中的总数，越界页返回空 `items`。
+
+事务内复核管理员权限，并从同一快照完成计数、分页、批量角色读取。SQL 只投影页面需要的字段，
+将邮箱显示为 `***@域名`，不合法的历史邮箱显示为 `***`。
+后台用户查询使用 `app.user.admin-query`，默认每来源 120 次/分钟、每管理员 60 次/分钟。
+
+### 读取后台用户详情
+
+`GET /api/v1/admin/users/{userId}` 对应 `getAdminUser`。仅接受路径中的用户 ID，成功返回单个
+`AdminUser`，沿用列表的权限复核、邮箱脱敏和查询配额。账号信息和角色在同一个只读事务快照中读取。
+被查询账号处于限制写入或禁用状态时，管理员仍可查看。ID 格式不合法返回 422，用户不存在返回 404。
+
+### 设置用户限制状态
+
+`PUT /api/v1/admin/users/{userId}/restriction` 对应 `restrictUser`。具备 `user:restrict` 的已验证
+ACTIVE 管理员提交 `expectedVersion`、`status`、`reason`。成功返回脱敏的 `AdminUser`。
+状态实际变化时递增业务版本并写入审计。当前版本下重复设置相同状态返回当前结果。过期版本返回
+`409 RESOURCE_VERSION_CONFLICT` 并携带 `currentVersion`。
+
+WRITE_BLOCKED 允许读取和账号安全操作，并拦截业务写入。DISABLED 拒绝登录，数据库认证版本在
+提交时递增，使旧会话立即失效。提交后按认证版本清理 Redis，清理失败时旧凭证仍然无法认证。
+ACTIVE 解除账号限制，之后可重新登录。作品仍按各自的发布状态展示。
+
+有效管理员必须已验证邮箱、拥有 ADMIN 角色且处于 ACTIVE。限制最后一位有效管理员返回
+`409 LAST_ADMIN_PROTECTED`。状态限制与替换角色共用 V28 的数据库锁行，使两类写事务串行执行。
+账号状态、业务版本、认证版本与审计在同一事务提交。
+
+独立限流配置为 `app.user.restriction`，默认每来源 120 次/分钟、每管理员 60 次/分钟。
+
+### 替换用户角色集合
+
+`PUT /api/v1/admin/users/{userId}/roles` 对应 `replaceUserRoles`。具备 `role:manage` 的已验证
+ACTIVE 管理员提交 `expectedVersion`、完整的 `roles`、`reason`。角色集合必须包含 USER，
+可添加 MODERATOR 或 ADMIN，角色不能重复。成功返回脱敏的 `AdminUser`。
+
+同版本且集合相同返回当前结果，即使顺序不同。角色实际变化时，将差异角色、业务版本、认证版本
+和 V29 审计记录在同一事务中提交。旧凭证立即失效，提交后按认证版本清理 Redis 中的旧会话。
+移除最后一位有效管理员的 ADMIN 角色返回 `409 LAST_ADMIN_PROTECTED`。过期版本返回
+`409 RESOURCE_VERSION_CONFLICT` 并携带 `currentVersion`。
+
+独立限流配置为 `app.user.role-update`，默认每来源 120 次/分钟、每管理员 60 次/分钟。
+
+### 查询预置角色及权限
+
+`GET /api/v1/admin/roles` 对应 `listRoles`。邮箱已验证的管理员可读取 `data.items`，列表按
+USER、MODERATOR、ADMIN 排列，每项包含角色代码、名称和契约定义的权限标识。请求无参数、无正文。
+服务在只读事务中复核账号、认证版本和管理员角色。目录来自预置角色定义，创作资格等条件由相应接口校验。
+
+角色查询使用独立的 `app.user.role-query` 配额，默认来源每分钟 120 次、管理员每分钟 60 次。
+环境变量为 `USER_ROLE_QUERY_IP_PER_MINUTE_LIMIT`、`USER_ROLE_QUERY_USER_PER_MINUTE_LIMIT`
+和 `USER_ROLE_QUERY_REDIS_KEY_PREFIX`。超限返回 429，响应带 `Retry-After`。
+
 ### 查看公开个人主页
 
 `GET /api/v1/users/{userId}` 对应 `getPublicUser`，游客可用；携带 Authorization 时必须验证，
@@ -90,6 +146,13 @@ WRITE_BLOCKED允许查询，返回canCreate=false；DISABLED返回403 ACCOUNT_RE
 
 2026-11-06验证：全部162项测试通过，新增真实HTTP当前用户查询、账号隔离、资料/角色更新、
 账号限制、过期/退出凭证拒绝、响应字段白名单及会话不续期验证；注册、登录、退出和两种改密流程回归通过。
+
+### 本人有效登录会话
+
+`GET /api/v1/me/sessions`已接通，按创建时间和ID倒序返回本人有效会话的六个显示字段，
+不返回凭证，不延长有效期。独立限流app.user.session-query，详细语义见[本人会话列表](user-sessions.md)。
+`DELETE /api/v1/me/sessions/{sessionId}`撤销本人指定会话，成功及目标不存在均204，
+独立限流app.user.session-revocation；详见[指定会话撤销](user-session-revocation.md)。
 
 ### 修改当前用户资料
 

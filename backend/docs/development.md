@@ -1,5 +1,20 @@
 # 开发与验证
 
+## 本人通知列表
+
+`GET /api/v1/me/notifications` 按登录身份读取 `user_notification`。支持
+`readState=ALL|UNREAD|READ`，`limit` 默认 20、最大 50。结果按 `createdAt` 和 `id` 倒序；
+只展示通知中已保存的说明，关联目标不可见时仍可查看该通知。
+
+游标使用固定的创建时间上界，绑定当前账号、筛选和每页条数。后续读取按通知的当前已读状态筛选。
+游标有效期默认 15 分钟，过期返回 `410 CURSOR_EXPIRED`。可配置 `NOTIFICATION_CURSOR_KEY_BASE64`
+作为独立密钥，省略时使用现有内容游标密钥，接口用途在加密时单独绑定。
+独立配额 `app.notification.query` 默认每来源 120 次/分钟、每用户 60 次/分钟。
+
+`GET /api/v1/me/notifications/unread-count` 用于未读角标，只按登录身份统计 `read_at IS NULL` 的通知。
+成功时返回 `data.count` 和查询时间 `data.asOf`，没有未读通知时数量为 0。
+未读数量与通知列表共用 `app.notification.query` 配额，查询保持通知的已读状态。
+
 ## 2026-11-13 运营强制下架验证
 
 新增 `POST /api/v1/admin/contents/{contentId}/take-downs`，规则与调用链见[强制下架](content-take-down.md)。

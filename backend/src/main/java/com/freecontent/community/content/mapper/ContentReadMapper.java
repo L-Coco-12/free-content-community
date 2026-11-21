@@ -13,6 +13,16 @@ import java.util.List;
 @Mapper
 public interface ContentReadMapper {
 
+    @Select("SELECT COUNT(*) FROM content_revision WHERE content_id=#{content}")
+    long countRevisions(@Param("content") String content);
+
+    @Select("""
+            SELECT id,content_id,revision_number,status,title,body_markdown,created_at,updated_at
+            FROM content_revision WHERE content_id=#{content}
+            ORDER BY revision_number DESC,id DESC LIMIT #{limit} OFFSET #{offset}
+            """)
+    List<RevisionRow> pageRevisions(@Param("content") String content,@Param("offset") long offset,@Param("limit") int limit);
+
     String OWNED_LIST_FILTER = """
             FROM community_content WHERE author_id=#{owner} AND lifecycle=#{lifecycle}
             <if test="publicationStatus != null"> AND publication_status=#{publicationStatus} </if>

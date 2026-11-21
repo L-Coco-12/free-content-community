@@ -3,7 +3,9 @@ package com.freecontent.community.content.workspace.service.impl;
 import com.freecontent.community.auth.security.SessionPrincipal;
 import com.freecontent.community.common.error.*;
 import com.freecontent.community.content.dto.ContentWorkspace;
+import com.freecontent.community.content.dto.RevisionView;
 import com.freecontent.community.content.dto.WorkspacePage;
+import com.freecontent.community.content.workspace.dto.RevisionPage;
 import com.freecontent.community.content.workspace.service.ContentWorkspaceService;
 import com.freecontent.community.content.workspace.service.transaction.ContentWorkspaceTransactionService;
 import com.freecontent.community.content.ratelimit.ContentQueryRateLimiter;
@@ -26,11 +28,7 @@ public class ContentWorkspaceServiceImpl implements ContentWorkspaceService {
     }
 
     @Override public ContentWorkspace getMyWorkspace(String contentId, SessionPrincipal principal, String sourceIp) {
-        if (principal == null || principal.user() == null) throw new BusinessException(ErrorCode.AUTHENTICATION_REQUIRED);
-        if (contentId == null || !contentId.matches("^[A-Za-z0-9_-]{1,64}$")) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "内容ID格式不正确", null, null,
-                    List.of(new ProblemDetailResponse.Violation("path", "contentId", "仅允许1到64位字母、数字、下划线及短横线")));
-        }
+        requireIdentityAndContentId(contentId,principal);
         limiter.acquire(principal.user().id(), sourceIp);
         try { return transactions.read(contentId, principal); }
         catch (DataAccessException | TransactionException ex) { throw new BusinessException(ErrorCode.DEPENDENCY_UNAVAILABLE, "内容工作区数据服务暂不可用"); }
@@ -47,6 +45,36 @@ public class ContentWorkspaceServiceImpl implements ContentWorkspaceService {
         limiter.acquire(principal.user().id(),sourceIp);
         try { return transactions.list(number,size,state,publication,type,principal); }
         catch (DataAccessException | TransactionException ex) { throw new BusinessException(ErrorCode.DEPENDENCY_UNAVAILABLE,"内容列表数据服务暂不可用"); }
+    }
+
+    @Override public RevisionPage listMyRevisions(String contentId,String page,String pageSize,SessionPrincipal principal,String sourceIp) {
+        requireIdentityAndContentId(contentId,principal);
+        BigInteger number=paginationValue(page,"page",1,null);
+        int size=paginationValue(pageSize,"pageSize",20,100).intValueExact();
+        limiter.acquire(principal.user().id(),sourceIp);
+        try{return transactions.listRevisions(contentId,number,size,principal);}
+        catch(DataAccessException | TransactionException ex){throw new BusinessException(ErrorCode.DEPENDENCY_UNAVAILABLE,"修订历史数据服务暂不可用");}
+    }
+
+    @Override
+    public RevisionView getMyRevision(String contentId, String revisionId, SessionPrincipal principal, String sourceIp) {
+        requireIdentityAndContentId(contentId, principal);
+        if (revisionId == null || !revisionId.matches("^[A-Za-z0-9_-]{1,64}$")) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "修订ID格式不正确", null, null,
+                    List.of(new ProblemDetailResponse.Violation("path", "revisionId", "仅允许1到64位字母、数字、下划线及短横线")));
+        }
+        limiter.acquire(principal.user().id(), sourceIp);
+        try {
+            return transactions.readRevision(contentId, revisionId, principal);
+        } catch (DataAccessException | TransactionException ex) {
+            throw new BusinessException(ErrorCode.DEPENDENCY_UNAVAILABLE, "修订详情数据服务暂不可用");
+        }
+    }
+
+    private void requireIdentityAndContentId(String contentId,SessionPrincipal principal) {
+        if(principal==null || principal.user()==null)throw new BusinessException(ErrorCode.AUTHENTICATION_REQUIRED);
+        if(contentId==null || !contentId.matches("^[A-Za-z0-9_-]{1,64}$"))throw new BusinessException(ErrorCode.VALIDATION_ERROR,"内容ID格式不正确",null,null,
+                List.of(new ProblemDetailResponse.Violation("path","contentId","仅允许1到64位字母、数字、下划线及短横线")));
     }
 
     private BigInteger paginationValue(String raw,String field,int defaultValue,Integer maximum) {

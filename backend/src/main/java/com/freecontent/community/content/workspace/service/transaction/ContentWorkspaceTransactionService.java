@@ -5,7 +5,9 @@ import com.freecontent.community.user.model.AccountSnapshot;
 import com.freecontent.community.auth.security.SessionPrincipal;
 import com.freecontent.community.common.error.*;
 import com.freecontent.community.content.dto.ContentWorkspace;
+import com.freecontent.community.content.dto.RevisionView;
 import com.freecontent.community.content.dto.WorkspacePage;
+import com.freecontent.community.content.workspace.dto.RevisionPage;
 import com.freecontent.community.content.mapper.ContentReadMapper;
 import com.freecontent.community.content.service.read.ContentWorkspaceReader;
 import com.freecontent.community.user.model.UserRole;
@@ -44,6 +46,30 @@ public class ContentWorkspaceTransactionService {
         if (offset.compareTo(BigInteger.valueOf(total)) >= 0) return new WorkspacePage(List.of(),page,pageSize,total);
         var rows = contents.pageOwned(owner,lifecycle,publicationStatus,kind,offset.longValueExact(),pageSize);
         return new WorkspacePage(reader.workspaces(rows),page,pageSize,total);
+    }
+
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
+    public RevisionPage listRevisions(String contentId,BigInteger page,int pageSize,SessionPrincipal principal) {
+        authorize(principal);
+        if(contents.findOwned(contentId,principal.user().id())==null)throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND);
+        long total=contents.countRevisions(contentId);
+        BigInteger offset=page.subtract(BigInteger.ONE).multiply(BigInteger.valueOf(pageSize));
+        if(offset.compareTo(BigInteger.valueOf(total))>=0)return new RevisionPage(List.of(),page,pageSize,total);
+        var rows=contents.pageRevisions(contentId,offset.longValueExact(),pageSize);
+        return new RevisionPage(reader.revisions(contentId,rows),page,pageSize,total);
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public RevisionView readRevision(String contentId, String revisionId, SessionPrincipal principal) {
+        authorize(principal);
+        if (contents.findOwned(contentId, principal.user().id()) == null) {
+            throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND);
+        }
+        var revision = contents.findRevision(revisionId, contentId);
+        if (revision == null) {
+            throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND);
+        }
+        return reader.revisionSnapshot(contentId, revision);
     }
 
     private void authorize(SessionPrincipal principal) {

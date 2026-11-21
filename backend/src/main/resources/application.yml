@@ -230,7 +230,39 @@ app:
       multipart-threshold-bytes: ${MEDIA_MULTIPART_THRESHOLD_BYTES:16777216}
       max-part-count: ${MEDIA_MAX_PART_COUNT:10000}
       upload-url-ttl-seconds: ${MEDIA_UPLOAD_URL_TTL_SECONDS:600}
+  notification:
+    cursor:
+      ttl-seconds: ${NOTIFICATION_CURSOR_TTL_SECONDS:900}
+      key-base64: ${NOTIFICATION_CURSOR_KEY_BASE64:${CONTENT_PUBLIC_CURSOR_KEY_BASE64}}
+    query:
+      ip-per-minute-limit: ${NOTIFICATION_QUERY_IP_PER_MINUTE_LIMIT:120}
+      user-per-minute-limit: ${NOTIFICATION_QUERY_USER_PER_MINUTE_LIMIT:60}
+      redis-key-prefix: ${NOTIFICATION_QUERY_REDIS_KEY_PREFIX:fc:notification:}
   user:
+    role-update:
+      ip-per-minute-limit: ${USER_ROLE_UPDATE_IP_PER_MINUTE_LIMIT:120}
+      user-per-minute-limit: ${USER_ROLE_UPDATE_USER_PER_MINUTE_LIMIT:60}
+      redis-key-prefix: ${USER_ROLE_UPDATE_REDIS_KEY_PREFIX:fc:user:}
+    restriction:
+      ip-per-minute-limit: ${USER_RESTRICTION_IP_PER_MINUTE_LIMIT:120}
+      user-per-minute-limit: ${USER_RESTRICTION_USER_PER_MINUTE_LIMIT:60}
+      redis-key-prefix: ${USER_RESTRICTION_REDIS_KEY_PREFIX:fc:user:}
+    admin-query:
+      ip-per-minute-limit: ${USER_ADMIN_QUERY_IP_PER_MINUTE_LIMIT:120}
+      user-per-minute-limit: ${USER_ADMIN_QUERY_USER_PER_MINUTE_LIMIT:60}
+      redis-key-prefix: ${USER_ADMIN_QUERY_REDIS_KEY_PREFIX:fc:user:}
+    role-query:
+      ip-per-minute-limit: ${USER_ROLE_QUERY_IP_PER_MINUTE_LIMIT:120}
+      user-per-minute-limit: ${USER_ROLE_QUERY_USER_PER_MINUTE_LIMIT:60}
+      redis-key-prefix: ${USER_ROLE_QUERY_REDIS_KEY_PREFIX:fc:user:}
+    session-revocation:
+      ip-per-minute-limit: ${USER_SESSION_REVOCATION_IP_PER_MINUTE_LIMIT:120}
+      user-per-minute-limit: ${USER_SESSION_REVOCATION_USER_PER_MINUTE_LIMIT:60}
+      redis-key-prefix: ${USER_SESSION_REVOCATION_REDIS_KEY_PREFIX:fc:user:}
+    session-query:
+      ip-per-minute-limit: ${USER_SESSION_QUERY_IP_PER_MINUTE_LIMIT:120}
+      user-per-minute-limit: ${USER_SESSION_QUERY_USER_PER_MINUTE_LIMIT:60}
+      redis-key-prefix: ${USER_SESSION_QUERY_REDIS_KEY_PREFIX:fc:user:}
     avatar-access:
       read-url-ttl-seconds: ${USER_AVATAR_READ_URL_TTL_SECONDS:300}
       ip-per-minute-limit: ${USER_AVATAR_IP_PER_MINUTE_LIMIT:120}
