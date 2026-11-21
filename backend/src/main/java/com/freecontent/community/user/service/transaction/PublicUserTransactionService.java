@@ -29,6 +29,6 @@ public class PublicUserTransactionService {
         var profile = users.read(userId);
         if (profile == null) throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND);
         return new PublicUserView(profile.id(), profile.displayName(), profile.bio(), avatars.url(profile.id(),profile.avatarAssetId()),
-                profile.createdAt().toInstant(ZoneOffset.UTC), contents.countByAuthor(profile.id()), 0);
+                profile.createdAt().toInstant(ZoneOffset.UTC), contents.countByAuthor(profile.id()), profile.followerCount());
     }
 }

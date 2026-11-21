@@ -77,6 +77,13 @@ public interface PublicContentMapper {
     List<PublishedRow> listVisibleByAuthor(@Param("author") String author, @Param("snapshot") LocalDateTime snapshot,
             @Param("lastAt") LocalDateTime lastAt, @Param("lastId") String lastId, @Param("take") int take);
 
+    @Select("<script> SELECT " + COLUMNS + PUBLISHED_JOIN + " WHERE " + VISIBLE + """
+        AND EXISTS(SELECT 1 FROM user_follow f WHERE f.follower_id=#{viewer} AND f.followed_id=c.author_id)
+        """ + KEYSET + " </script>")
+    List<PublishedRow> listVisibleFromFollowedAuthors(@Param("viewer") String viewer,
+            @Param("snapshot") LocalDateTime snapshot, @Param("lastAt") LocalDateTime lastAt,
+            @Param("lastId") String lastId, @Param("take") int take);
+
     @Select("""
         <script> SELECT ref.revision_id,ref.asset_id,ref.usage_type,ref.position,a.owner_id,a.scene,a.state
         FROM content_revision_asset ref LEFT JOIN media_asset a ON a.id=ref.asset_id WHERE ref.revision_id IN

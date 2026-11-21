@@ -12,7 +12,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties({NotificationQueryProperties.class, NotificationCursorProperties.class})
+@EnableConfigurationProperties({
+        NotificationQueryProperties.class, NotificationCursorProperties.class, NotificationReadMarkProperties.class
+})
 public class NotificationConfiguration {
     @Bean
     public OpenApiCustomizer notificationPageContract() {

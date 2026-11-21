@@ -6,7 +6,7 @@ import com.freecontent.community.content.browse.cursor.PublicContentCursor;
 import com.freecontent.community.content.browse.dto.ContentPageView;
 import com.freecontent.community.content.browse.ratelimit.PublicContentQueryRateLimiter;
 import com.freecontent.community.content.browse.service.PublicContentListService;
-import com.freecontent.community.content.browse.service.PublicContentListParameters;
+import com.freecontent.community.common.pagination.CursorPageParameters;
 import com.freecontent.community.content.browse.service.transaction.PublicContentListTransactionService;
 import com.freecontent.community.content.model.ContentKind;
 import org.springframework.dao.DataAccessException;
@@ -23,14 +23,14 @@ public class PublicContentListServiceImpl implements PublicContentListService {
     }
     @Override
     public ContentPageView listPublishedContents(String cursor, String limit, String kind, String tagId, SessionPrincipal viewer, String sourceIp) {
-        int size = PublicContentListParameters.pageSize(limit);
+        int size = CursorPageParameters.pageSize(limit);
         ContentKind type = null;
         if (kind != null) {
             try { type = ContentKind.valueOf(kind); }
-            catch (IllegalArgumentException ex) { throw PublicContentListParameters.invalidQuery("kind", "仅允许ARTICLE或VIDEO"); }
+            catch (IllegalArgumentException ex) { throw CursorPageParameters.invalidQuery("kind", "仅允许ARTICLE或VIDEO"); }
         }
-        if (tagId != null && !tagId.matches("^[A-Za-z0-9_-]{1,64}$")) throw PublicContentListParameters.invalidQuery("tagId", "标签ID格式不正确");
-        PublicContentListParameters.requireCursorLength(cursor);
+        if (tagId != null && !tagId.matches("^[A-Za-z0-9_-]{1,64}$")) throw CursorPageParameters.invalidQuery("tagId", "标签ID格式不正确");
+        CursorPageParameters.requireCursorLength(cursor);
         String actor = viewer == null ? null : viewer.user().id();
         var query = cursors.open(cursor, size, type, tagId, actor == null ? "anonymous" : "user:" + actor);
         limiter.acquire(actor, sourceIp);

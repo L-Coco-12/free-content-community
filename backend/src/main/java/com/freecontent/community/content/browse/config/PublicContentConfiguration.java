@@ -8,7 +8,8 @@ import io.swagger.v3.oas.models.security.SecurityRequirement;
 import java.util.List;
 
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties({PublicContentQueryProperties.class, PublicContentCursorProperties.class, PublishedMediaAccessProperties.class})
+@EnableConfigurationProperties({PublicContentQueryProperties.class, PublicContentCursorProperties.class,
+        PublishedMediaAccessProperties.class, FollowingFeedProperties.class})
 public class PublicContentConfiguration {
     @Bean
     public OpenApiCustomizer optionalPublicContentAuthentication() {

@@ -7,7 +7,7 @@ import com.freecontent.community.common.error.ProblemDetailResponse;
 import com.freecontent.community.content.browse.cursor.PublicContentCursor;
 import com.freecontent.community.content.browse.dto.ContentPageView;
 import com.freecontent.community.content.browse.ratelimit.PublicContentQueryRateLimiter;
-import com.freecontent.community.content.browse.service.PublicContentListParameters;
+import com.freecontent.community.common.pagination.CursorPageParameters;
 import com.freecontent.community.content.browse.service.UserContentListService;
 import com.freecontent.community.content.browse.service.transaction.PublicContentListTransactionService;
 import java.util.List;
@@ -34,8 +34,8 @@ public class UserContentListServiceImpl implements UserContentListService {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "用户ID格式不正确", null, null,
                     List.of(new ProblemDetailResponse.Violation("path", "userId", "仅允许1到64位字母、数字、下划线及短横线")));
         }
-        int size = PublicContentListParameters.pageSize(limit);
-        PublicContentListParameters.requireCursorLength(cursor);
+        int size = CursorPageParameters.pageSize(limit);
+        CursorPageParameters.requireCursorLength(cursor);
         String scope = viewer == null ? "anonymous" : "user:" + viewer.user().id();
         var query = cursors.openForAuthor(cursor, size, userId, scope);
         limiter.acquire(viewer == null ? null : viewer.user().id(), sourceIp);

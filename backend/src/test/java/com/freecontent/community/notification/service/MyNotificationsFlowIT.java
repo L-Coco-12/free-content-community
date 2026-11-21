@@ -4,6 +4,7 @@ import com.freecontent.community.auth.LoginTestSupport;
 import com.freecontent.community.auth.security.TokenDigest;
 import com.freecontent.community.auth.session.RedisSessionStore;
 import com.freecontent.community.notification.config.NotificationQueryProperties;
+import com.freecontent.community.notification.config.NotificationReadMarkProperties;
 import com.freecontent.community.user.entity.UserAccount;
 import com.freecontent.community.user.mapper.UserAccountMapper;
 import com.freecontent.community.user.mapper.UserRoleMapper;
@@ -22,6 +23,9 @@ import java.util.Comparator;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -52,6 +56,7 @@ class MyNotificationsFlowIT {
     @Autowired private RedisSessionStore sessions;
     @Autowired private StringRedisTemplate redis;
     @Autowired private NotificationQueryProperties quota;
+    @Autowired private NotificationReadMarkProperties readQuota;
     private final List<String> fixtures = new ArrayList<>();
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
 
@@ -59,6 +64,7 @@ class MyNotificationsFlowIT {
     static void isolateRedis(DynamicPropertyRegistry registry) {
         registry.add("app.auth.login.redis-key-prefix", () -> PREFIX);
         registry.add("app.notification.query.redis-key-prefix", () -> PREFIX);
+        registry.add("app.notification.read.redis-key-prefix", () -> PREFIX);
     }
 
     @AfterEach
@@ -93,6 +99,221 @@ class MyNotificationsFlowIT {
         assertFalse(payload.read("$.data.hasMore", Boolean.class));
         assertNull(payload.read("$.data.nextCursor"));
         assertEquals("no-store", response.headers().firstValue("Cache-Control").orElseThrow());
+    }
+
+    @Test
+    void batchReadCountsOnlyTheNotificationsThatBecomeRead() throws Exception {
+        var viewer = account();
+        String first = insert(viewer, CREATED, null, null, null);
+        String second = insert(viewer, CREATED, null, null, null);
+        String alreadyRead = insert(viewer, CREATED, CREATED.plusSeconds(5), null, null);
+        String token = token(viewer);
+
+        var response = markBatchRead(batchOf(first, alreadyRead, second), token);
+
+        assertEquals(200, response.statusCode(), response.body());
+        assertEquals(2, JsonPath.parse(response.body()).read("$.data.markedCount", Integer.class));
+        assertEquals("no-store", response.headers().firstValue("Cache-Control").orElseThrow());
+        assertEquals(CREATED.plusSeconds(5), jdbc.queryForObject(
+                "SELECT read_at FROM user_notification WHERE id=?", LocalDateTime.class, alreadyRead));
+        var firstReadAt = jdbc.queryForObject("SELECT read_at FROM user_notification WHERE id=?", LocalDateTime.class, first);
+        assertNotNull(firstReadAt);
+        var replay = markBatchRead(batchOf(second, alreadyRead, first), token);
+        assertEquals(200, replay.statusCode(), replay.body());
+        assertEquals(0, JsonPath.parse(replay.body()).read("$.data.markedCount", Integer.class));
+        assertEquals(firstReadAt, jdbc.queryForObject(
+                "SELECT read_at FROM user_notification WHERE id=?", LocalDateTime.class, first));
+        var count = get(COUNT, token);
+        assertEquals(200, count.statusCode(), count.body());
+        assertEquals(0L, JsonPath.parse(count.body()).read("$.data.count", Long.class));
+    }
+
+    @Test
+    void mixingForeignOrMissingIdsRejectsTheWholeBatch() throws Exception {
+        var viewer = account();
+        String mine = insert(viewer, CREATED, null, null, null);
+        String other = insert(account(), CREATED, null, null, null);
+        String token = token(viewer);
+
+        problem(markBatchRead(batchOf(mine, other), token), 404, "RESOURCE_NOT_FOUND");
+        problem(markBatchRead(batchOf(mine, id()), token), 404, "RESOURCE_NOT_FOUND");
+        assertNull(jdbc.queryForObject("SELECT read_at FROM user_notification WHERE id=?", LocalDateTime.class, mine));
+        assertNull(jdbc.queryForObject("SELECT read_at FROM user_notification WHERE id=?", LocalDateTime.class, other));
+    }
+
+    @Test
+    void overlappingBatchesCountTheSharedNotificationOnlyOnce() throws Exception {
+        var viewer = account();
+        String first = insert(viewer, CREATED, null, null, null);
+        String shared = insert(viewer, CREATED, null, null, null);
+        String last = insert(viewer, CREATED, null, null, null);
+        String token = token(viewer);
+        var a = http.sendAsync(batchRequest(batchOf(shared, first), token), HttpResponse.BodyHandlers.ofString());
+        var b = http.sendAsync(batchRequest(batchOf(last, shared), token), HttpResponse.BodyHandlers.ofString());
+        CompletableFuture.allOf(a, b).get(25, TimeUnit.SECONDS);
+
+        assertEquals(200, a.join().statusCode(), a.join().body());
+        assertEquals(200, b.join().statusCode(), b.join().body());
+        int total = JsonPath.parse(a.join().body()).read("$.data.markedCount", Integer.class)
+                + JsonPath.parse(b.join().body()).read("$.data.markedCount", Integer.class);
+        assertEquals(3, total);
+    }
+
+    @Test
+    void batchReadRequiresAnActiveAuthenticatedAccount() throws Exception {
+        var viewer = account();
+        String notification = insert(viewer, CREATED, null, null, null);
+        String token = token(viewer);
+        String body = batchOf(notification);
+
+        problem(markBatchRead(body, null), 401, "AUTHENTICATION_REQUIRED");
+        jdbc.update("UPDATE app_user SET account_status='WRITE_BLOCKED' WHERE id=?", viewer.getId());
+        problem(markBatchRead(body, token), 403, "ACCOUNT_RESTRICTED");
+        assertNull(jdbc.queryForObject("SELECT read_at FROM user_notification WHERE id=?", LocalDateTime.class, notification));
+    }
+
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+            "{}|422|VALIDATION_ERROR",
+            "{\"notificationIds\":[]}|422|VALIDATION_ERROR",
+            "{\"notificationIds\":[\"notice_1\",\"notice_1\"]}|422|VALIDATION_ERROR",
+            "{\"notificationIds\":[\"invalid!\"]}|422|VALIDATION_ERROR",
+            "{\"notificationIds\":[null]}|422|VALIDATION_ERROR",
+            "{\"notificationIds\":[1]}|400|MALFORMED_REQUEST",
+            "{\"notificationIds\":[\"notice_1\"],\"recipientId\":\"other\"}|400|MALFORMED_REQUEST"
+    })
+    void batchReadRejectsInvalidPayloadsBeforeChargingQuota(String body, int status, String error) throws Exception {
+        var viewer = account();
+        problem(markBatchRead(body, token(viewer)), status, error);
+        assertNull(redis.opsForValue().get(readQuotaKey(viewer)));
+    }
+
+    @Test
+    void batchReadRejectsMoreThan100NotificationIds() throws Exception {
+        var viewer = account();
+        String[] ids = IntStream.range(0, 101).mapToObj(i -> "notice_" + i).toArray(String[]::new);
+        problem(markBatchRead(batchOf(ids), token(viewer)), 422, "VALIDATION_ERROR");
+        assertNull(redis.opsForValue().get(readQuotaKey(viewer)));
+    }
+
+    @Test
+    void batchAndSingleMarkReadShareOneWriteQuota() throws Exception {
+        var viewer = account();
+        String first = insert(viewer, CREATED, null, null, null);
+        String second = insert(viewer, CREATED, null, null, null);
+        String token = token(viewer);
+        if (readQuota.userPerMinuteLimit() > 1) {
+            redis.opsForValue().set(readQuotaKey(viewer), Integer.toString(readQuota.userPerMinuteLimit() - 1),
+                    Duration.ofSeconds(40));
+        }
+        var single = markRead("/" + first + "/read", token);
+        assertEquals(204, single.statusCode(), single.body());
+
+        var batch = markBatchRead(batchOf(second), token);
+
+        problem(batch, 429, "RATE_LIMITED");
+        assertTrue(Integer.parseInt(batch.headers().firstValue("Retry-After").orElseThrow()) > 0);
+        assertNull(jdbc.queryForObject("SELECT read_at FROM user_notification WHERE id=?", LocalDateTime.class, second));
+    }
+
+    @Test
+    void markReadReturns204AndImmediatelyUpdatesTheUnreadCount() throws Exception {
+        var viewer = account();
+        String notification = insert(viewer, CREATED, null, "CONTENT", "unavailable_content");
+        String token = token(viewer);
+
+        var response = markRead("/" + notification + "/read", token);
+
+        assertEquals(204, response.statusCode(), response.body());
+        assertEquals("", response.body());
+        assertEquals("no-store", response.headers().firstValue("Cache-Control").orElseThrow());
+        assertFalse(response.headers().firstValue("X-Request-Id").orElseThrow().isBlank());
+        assertNotNull(jdbc.queryForObject("SELECT read_at FROM user_notification WHERE id=?", LocalDateTime.class, notification));
+        var count = get(COUNT, token);
+        assertEquals(200, count.statusCode(), count.body());
+        assertEquals(0L, JsonPath.parse(count.body()).read("$.data.count", Long.class));
+    }
+
+    @Test
+    void repeatedMarkReadPreservesTheFirstReadTimestamp() throws Exception {
+        var viewer = account();
+        LocalDateTime firstRead = CREATED.plusSeconds(5);
+        String notification = insert(viewer, CREATED, firstRead, null, null);
+
+        var response = markRead("/" + notification + "/read", token(viewer));
+
+        assertEquals(204, response.statusCode(), response.body());
+        assertEquals(firstRead, jdbc.queryForObject(
+                "SELECT read_at FROM user_notification WHERE id=?", LocalDateTime.class, notification));
+    }
+
+    @Test
+    void concurrentMarkReadRequestsBothSucceedAndTheNotificationIsRead() throws Exception {
+        var viewer = account();
+        String notification = insert(viewer, CREATED, null, null, null);
+        String suffix = "/" + notification + "/read";
+        String token = token(viewer);
+        var first = http.sendAsync(readRequest(suffix, token, HttpRequest.BodyPublishers.noBody()), HttpResponse.BodyHandlers.ofString());
+        var second = http.sendAsync(readRequest(suffix, token, HttpRequest.BodyPublishers.noBody()), HttpResponse.BodyHandlers.ofString());
+        CompletableFuture.allOf(first, second).get(25, TimeUnit.SECONDS);
+
+        assertEquals(204, first.join().statusCode(), first.join().body());
+        assertEquals(204, second.join().statusCode(), second.join().body());
+        assertNotNull(jdbc.queryForObject("SELECT read_at FROM user_notification WHERE id=?", LocalDateTime.class, notification));
+    }
+
+    @Test
+    void foreignAndMissingNotificationsProduceTheSameNotFound() throws Exception {
+        var viewer = account();
+        String otherNotification = insert(account(), CREATED, null, null, null);
+        String token = token(viewer);
+
+        problem(markRead("/" + otherNotification + "/read", token), 404, "RESOURCE_NOT_FOUND");
+        problem(markRead("/" + id() + "/read", token), 404, "RESOURCE_NOT_FOUND");
+        assertNull(jdbc.queryForObject("SELECT read_at FROM user_notification WHERE id=?", LocalDateTime.class, otherNotification));
+    }
+
+    @Test
+    void markReadRequiresAnActiveAuthenticatedAccount() throws Exception {
+        var viewer = account();
+        String notification = insert(viewer, CREATED, null, null, null);
+        String suffix = "/" + notification + "/read";
+        String token = token(viewer);
+
+        problem(markRead(suffix, null), 401, "AUTHENTICATION_REQUIRED");
+        jdbc.update("UPDATE app_user SET account_status='WRITE_BLOCKED' WHERE id=?", viewer.getId());
+        problem(markRead(suffix, token), 403, "ACCOUNT_RESTRICTED");
+        assertNull(jdbc.queryForObject("SELECT read_at FROM user_notification WHERE id=?", LocalDateTime.class, notification));
+    }
+
+    @Test
+    void markReadRejectsMalformedInputBeforeChargingQuota() throws Exception {
+        var viewer = account();
+        String notification = insert(viewer, CREATED, null, null, null);
+        String suffix = "/" + notification + "/read";
+        String token = token(viewer);
+
+        problem(markRead("/invalid!/read", token), 422, "VALIDATION_ERROR");
+        problem(markRead(suffix + "?recipientId=other", token), 400, "MALFORMED_REQUEST");
+        problem(http.send(readRequest(suffix, token, HttpRequest.BodyPublishers.ofString("{}")),
+                HttpResponse.BodyHandlers.ofString()), 400, "MALFORMED_REQUEST");
+        assertNull(redis.opsForValue().get(readQuotaKey(viewer)));
+    }
+
+    @Test
+    void markReadHasAnIndependentQuotaAndThrottlingDoesNotChangeTheNotification() throws Exception {
+        var viewer = account();
+        String notification = insert(viewer, CREATED, null, null, null);
+        String token = token(viewer);
+        redis.opsForValue().set(readQuotaKey(viewer), Integer.toString(readQuota.userPerMinuteLimit()), Duration.ofSeconds(40));
+
+        var response = markRead("/" + notification + "/read", token);
+
+        problem(response, 429, "RATE_LIMITED");
+        assertTrue(Integer.parseInt(response.headers().firstValue("Retry-After").orElseThrow()) > 0);
+        var count = get(COUNT, token);
+        assertEquals(200, count.statusCode(), count.body());
+        assertEquals(1L, JsonPath.parse(count.body()).read("$.data.count", Long.class));
     }
 
     @Test
@@ -271,6 +492,10 @@ class MyNotificationsFlowIT {
         return PREFIX + "{notification-query}:user:" + TokenDigest.sha256(viewer.getId());
     }
 
+    private String readQuotaKey(UserAccount viewer) {
+        return PREFIX + "{notification-read}:user:" + TokenDigest.sha256(viewer.getId());
+    }
+
     private void problem(HttpResponse<String> response, int status, String code) {
         assertEquals(status, response.statusCode(), response.body());
         assertEquals(code, JsonPath.read(response.body(), "$.code"));
@@ -305,6 +530,33 @@ class MyNotificationsFlowIT {
                 .timeout(Duration.ofSeconds(20)).GET();
         if (token != null) request.header("Authorization", "Bearer " + token);
         return http.send(request.build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private HttpResponse<String> markRead(String suffix, String token) throws Exception {
+        return http.send(readRequest(suffix, token, HttpRequest.BodyPublishers.noBody()), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private HttpResponse<String> markBatchRead(String json, String token) throws Exception {
+        return http.send(batchRequest(json, token), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private HttpRequest batchRequest(String json, String token) {
+        var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + PATH + "/read-batches"))
+                .timeout(Duration.ofSeconds(20)).header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(json));
+        if (token != null) request.header("Authorization", "Bearer " + token);
+        return request.build();
+    }
+
+    private static String batchOf(String... ids) {
+        return "{\"notificationIds\":[\"" + String.join("\",\"", ids) + "\"]}";
+    }
+
+    private HttpRequest readRequest(String suffix, String token, HttpRequest.BodyPublisher body) {
+        var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + PATH + suffix))
+                .timeout(Duration.ofSeconds(20)).method("PUT", body);
+        if (token != null) request.header("Authorization", "Bearer " + token);
+        return request.build();
     }
 
     private static String id() {

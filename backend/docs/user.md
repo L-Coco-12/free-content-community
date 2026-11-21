@@ -71,7 +71,7 @@ USER、MODERATOR、ADMIN 排列，每项包含角色代码、名称和契约定�
 成功返回 ApiResponse<PublicUser>，仅包含 id、displayName、bio、avatarUrl、createdAt、
 publishedContentCount、followerCount 七个公开字段，不读取或返回邮箱、密码、角色、账号权限、
 会话或版本。READY头像绑定及[稳定读取地址](user-avatar-access.md)已实现，无有效头像返回avatarUrl=null。
-资料查询不签名或访问MinIO，图片请求单独检查并302跳转。关注关系尚未实现，followerCount仍为0。
+资料查询不签名或访问MinIO，图片请求单独检查并302跳转。followerCount 来自已提交的关注关系。
 
 路径 ID 只允许 1～64 位字母、数字、下划线和短横线，非法返回 422，violations 定位 path/userId。
 不接受任何查询参数，未定义及重复参数返回 400 MALFORMED_REQUEST。
@@ -92,6 +92,42 @@ publishedContentCount、followerCount 七个公开字段，不读取或返回邮
 登录访问者额外 60 次/分钟；游客和登录请求共用 `{user-public-query}` 来源窗口，用户窗口绑定访问者而非目标作者。
 参数或凭证非法不计配额；合法查询（包括重复读取和用户不存在）计数，429 携带正整数 Retry-After。
 Redis 故障返回 503，不当作成功或游客请求。
+
+### 关注用户
+
+`PUT /api/v1/me/following/{userId}` 对应 `followUser`，使用 Bearer 会话，仅接收路径参数。发起人须为
+已验证邮箱的 ACTIVE 账号。ACTIVE 和 WRITE_BLOCKED 账号可以被关注，目标禁用或不存在均返回
+`404 RESOURCE_NOT_FOUND`。关注本人或 ID 格式非法返回 `422 VALIDATION_ERROR`。
+
+首次关注与重复关注均返回 204。V30 在 `user_follow` 上约束关注人和被关注人这一对唯一。首次插入时
+在同一 MySQL 事务为目标保存未读 `NEW_FOLLOWER` 通知，写入失败会回滚关系。通知文本包含发起人的公开昵称，
+`targetType` 和 `targetId` 均为空。公开主页和作品作者资料通过目标索引读取同一份关注关系计数。
+
+关注和取消关注共用 `app.user.follow` 配额，默认每用户 60 次/分钟、每来源 120 次/分钟。有效格式的已认证请求
+计入配额，包括重复请求。超限返回 429 并带 `Retry-After`，Redis 或数据库故障返回 503。
+
+### 取消本人关注
+
+`DELETE /api/v1/me/following/{userId}` 对应 `unfollowUser`，使用 Bearer 会话，仅接收路径参数。
+服务在事务内复核发起人的认证版本、邮箱验证和 ACTIVE 状态，按发起人及目标 ID 删除关注关系。
+关系已删除或从未建立时均返回 204，目标账号禁用时仍可清理已有关系。已发送的关注通知会保留。
+
+关注关系删除后，公开资料和作品详情中的粉丝数随数据更新。以后重新关注会创建一条新的关系和通知。
+
+### 查询本人关注列表
+
+`GET /api/v1/me/following` 对应 `listMyFollowing`，使用 Bearer 会话。邮箱已验证的 ACTIVE 或 WRITE_BLOCKED 账号可查看
+本人关注列表。每项使用 `PublicUser` 公开资料及实时粉丝数、公开作品数。公开资料可见性与个人主页一致，
+因此已有关注关系中的禁用用户仍可列出。
+
+首次请求可传 `limit`，默认 20，范围 1～50。后续用 `nextCursor` 作为 `cursor` 并保持 `limit` 一致。响应包含
+`items`、`hasMore`、`nextCursor` 和 `snapshotAt`。列表按关注关系的 `created_at` 和 `id` 倒序，条目的 `createdAt`
+为被关注用户注册时间。V31 增加对应的覆盖索引，资料和公开作品数在同一只读事务中批量读取。
+
+`snapshotAt` 固定本轮关注时间上界。分页中发生的取消关注会影响后续页，晚于该上界的新关注在开启新一轮查询时可见。
+游标绑定接口、当前账号、每批数量和上界，默认从首批开始有效 15 分钟。错用或篡改返回 `400 CURSOR_INVALID`，
+过期返回 `410 CURSOR_EXPIRED`。列表使用独立的 `app.user.follow-query` 配额，默认每用户 60 次/分钟、每来源 120 次/分钟，
+返回 `429` 时含 `Retry-After`。
 
 | 配置 | 环境变量 | 默认值 |
 | --- | --- | --- |

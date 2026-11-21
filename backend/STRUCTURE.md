@@ -9,7 +9,7 @@
 src/main/java/com/freecontent/community/
 ├── FreeContentApplication.java
 ├── auth/                         # 验证码、注册、登录、退出、找回密码、认证与会话
-├── user/                         # 当前账号、公开个人主页、资料、改密、角色及账号访问能力
+├── user/                         # 当前账号、公开个人主页、资料、关注、改密、角色及账号访问能力
 │   ├── model/AccountSnapshot.java
 │   ├── service/AccountAccessService.java
 │   └── service/impl/AccountAccessServiceImpl.java
@@ -41,7 +41,7 @@ src/main/java/com/freecontent/community/
 │   ├── ratelimit/ContentQueryRateLimiter.java
 │   ├── service/read/             # ContentWorkspaceReader / PublicContentVisibilityReader
 │   └── validation/               # 草稿结构及媒体/标签引用的共享校验
-├── notification/                 # 本人通知列表和下架通知的事务内写入
+├── notification/                 # 本人通知及下架、关注通知的事务内写入
 │   ├── controller/dto/cursor/config/ratelimit/
 │   └── model/mapper/service/
 ├── common/
@@ -175,6 +175,14 @@ mvn clean verify
 `content.service.read.PublicContentCountReader` 提供 MANDATORY 数量读取，复用公开内容的 VISIBLE 条件，
 用户模块不复制内容 SQL 或调用内容详情用例。主页使用独立 `app.user.public-query` / `{user-public-query}` 配额。
 
+关注和取消关注归 `user`，共用 `app.user.follow` 配额。事务中通过 V30 关系唯一约束处理重复关注，
+并调用 `notification.service.FollowerNotificationWriter` 保存通知。取消关注按调用者和目标删除关系，
+公开资料投影从同一关系表读取粉丝数。[关注用户](docs/user.md#关注用户) · [取消本人关注](docs/user.md#取消本人关注)
+
+本人关注列表使用 V31 关系索引和独立的 `app.user.follow-query` 配额，复用 `PublicUserReader` 和
+`PublicContentCountReader` 批量装配公开字段。同一轮读取使用关注关系时间上界。
+[查询本人关注列表](docs/user.md#查询本人关注列表)
+
 ## 公开列表的连续浏览与批量读取
 
 本人收藏列表归 `content.interaction`，虽然路由位于 `/me/bookmarks`，仍不迁入 user/auth。
@@ -183,6 +191,10 @@ MyBookmarksController、MyBookmarksService接口/impl、事务、BookmarkQueryMa
 全站、作者及收藏列表通过共享 `content.service.read.PublicContentSummaryReader` 批量装配公开卡片，
 Reader以MANDATORY保持调用方快照。收藏候选按关系createdAt/id排序，复用公开可见性SQL及V27索引。
 详见[本人收藏列表](docs/content-bookmark-list.md)。
+
+关注流归 `content.browse`，使用独立 `app.content.following-feed` 配额。候选通过关注关系和
+公开可见性条件一次筛选，复用 `PublicContentSummaryReader` 批量装配。首发时间上界跨页固定，
+每一页在自身只读事务内查询当前关注关系。[关注流](docs/content-browse.md#浏览关注作者的信息流)
 
 公开列表采用独立PublicContentListService接口与service.impl，复用browse的Controller、Mapper、
 PublicContentAssembler和公开查询限流；禁止逐项调用详情用例。原单条详情的错误边界保持不变。

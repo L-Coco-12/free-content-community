@@ -45,7 +45,7 @@ bodyMarkdown、imageAssetIds、videoAssetId。可空字段仍显式返回 null�
   截取前 300 个 Unicode 码点，不截断 UTF-16 代理对；空正文返回空摘要。
 - tags 保留已发布修订的引用与顺序，返回标签当前名称、说明、状态和版本。停用标签仍返回 DISABLED，不因此隐藏已发布内容。
 - 作者公开作品数按真实可见的发布内容及素材条件计算，排除未公开、撤回、下架、已删除、未批准或素材未 READY 的内容。
-- [点赞](content-like.md)计数及[收藏](content-bookmark.md)标记已接通；评论、关注仍未实现，对应计数保持原占位。
+- [点赞](content-like.md)计数、[收藏](content-bookmark.md)标记和[作者粉丝数](user.md#关注用户)来自实际关系；评论数为占位值。
   取消收藏已接通，本人收藏列表留待后续接口接入。
 - 作者头像已接入[稳定读取地址](user-avatar-access.md)，无有效头像时为null；图片故障不使作品整体失败。
 
@@ -78,6 +78,20 @@ bodyMarkdown、imageAssetIds、videoAssetId。可空字段仍显式返回 null�
 
 browse 不依赖 workspace/review 业务实现；只使用内容共享类型和现有认证、通用限流能力。
 原有 V1～V15 及原始 OpenAPI 不改写，固定错误契约新增 getPublicContent，合计 33 个已实现操作。
+
+## 浏览关注作者的信息流
+
+`GET /api/v1/feeds/following` 对应 `getFollowingFeed`，仅接受有效 Bearer 会话和 `cursor`、`limit` 查询参数。
+已验证邮箱的 ACTIVE 或 WRITE_BLOCKED 账号可以读取。每次查询匹配当前账号的关注关系，并复用公开内容可见性和
+当前公开修订的判断，批量返回 `ContentPage` 的内容卡片、作者资料及当前用户的点赞和收藏状态。
+
+`limit` 默认 20，范围 1～50。按作品首次发布时间 `firstPublishedAt` 和内容 ID 倒序，所以重新发布后的作品
+仍使用原有排序位置。每轮使用首批的 `snapshotAt` 作发布时间上界，后续页按当前关注关系和公开状态重新查询。
+取消关注和下架可以让候选从后续页消失，新关注作者在游标位置之后的公开作品可进入后续页。
+
+续页使用 `nextCursor` 并保持 `limit` 一致。游标绑定账号和本接口用途，沿用 `app.content.public-cursor` 的密钥和
+期限，默认有效 15 分钟。错用或篡改返回 `400 CURSOR_INVALID`，过期返回 `410 CURSOR_EXPIRED`。
+关注流独立使用 `app.content.following-feed` 限流，默认每用户 60 次/分钟、每来源 120 次/分钟。
 
 ## 本轮验证记录
 

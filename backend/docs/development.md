@@ -15,6 +15,16 @@
 成功时返回 `data.count` 和查询时间 `data.asOf`，没有未读通知时数量为 0。
 未读数量与通知列表共用 `app.notification.query` 配额，查询保持通知的已读状态。
 
+`PUT /api/v1/me/notifications/{notificationId}/read` 由 ACTIVE 账号标记本人通知，成功返回
+`204` 空响应。重复请求保留首次已读时间，他人通知与不存在的通知统一返回 `404`。
+已读状态提交后会立即反映在通知列表和未读计数中。独立写入配额 `app.notification.read`
+默认每来源 120 次/分钟、每用户 60 次/分钟。
+
+`POST /api/v1/me/notifications/read-batches` 接收 `notificationIds`，每批 1 至 100 个唯一 ID。
+事务逐批校验所有通知的归属，包含他人或不存在的通知时整批返回 `404`。
+成功返回 `data.markedCount`，仅统计本次由未读转为已读的通知。重复提交完整的已读批次返回 0，
+首次已读时间会保留。批量和单条标记共用 `app.notification.read` 写入配额。
+
 ## 2026-11-13 运营强制下架验证
 
 新增 `POST /api/v1/admin/contents/{contentId}/take-downs`，规则与调用链见[强制下架](content-take-down.md)。

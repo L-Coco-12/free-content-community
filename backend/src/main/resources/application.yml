@@ -80,6 +80,10 @@ app:
     public-cursor:
       ttl-seconds: ${CONTENT_PUBLIC_CURSOR_TTL_SECONDS:900}
       key-base64: ${CONTENT_PUBLIC_CURSOR_KEY_BASE64}
+    following-feed:
+      ip-per-minute-limit: ${CONTENT_FOLLOWING_FEED_IP_PER_MINUTE_LIMIT:120}
+      user-per-minute-limit: ${CONTENT_FOLLOWING_FEED_USER_PER_MINUTE_LIMIT:60}
+      redis-key-prefix: ${CONTENT_FOLLOWING_FEED_REDIS_KEY_PREFIX:fc:content:}
     public-query:
       ip-per-minute-limit: ${CONTENT_PUBLIC_QUERY_IP_PER_MINUTE_LIMIT:120}
       user-per-minute-limit: ${CONTENT_PUBLIC_QUERY_USER_PER_MINUTE_LIMIT:60}
@@ -231,6 +235,10 @@ app:
       max-part-count: ${MEDIA_MAX_PART_COUNT:10000}
       upload-url-ttl-seconds: ${MEDIA_UPLOAD_URL_TTL_SECONDS:600}
   notification:
+    read:
+      ip-per-minute-limit: ${NOTIFICATION_READ_IP_PER_MINUTE_LIMIT:120}
+      user-per-minute-limit: ${NOTIFICATION_READ_USER_PER_MINUTE_LIMIT:60}
+      redis-key-prefix: ${NOTIFICATION_READ_REDIS_KEY_PREFIX:fc:notification:}
     cursor:
       ttl-seconds: ${NOTIFICATION_CURSOR_TTL_SECONDS:900}
       key-base64: ${NOTIFICATION_CURSOR_KEY_BASE64:${CONTENT_PUBLIC_CURSOR_KEY_BASE64}}
@@ -239,6 +247,16 @@ app:
       user-per-minute-limit: ${NOTIFICATION_QUERY_USER_PER_MINUTE_LIMIT:60}
       redis-key-prefix: ${NOTIFICATION_QUERY_REDIS_KEY_PREFIX:fc:notification:}
   user:
+    follow-query:
+      ip-per-minute-limit: ${USER_FOLLOW_QUERY_IP_PER_MINUTE_LIMIT:120}
+      user-per-minute-limit: ${USER_FOLLOW_QUERY_USER_PER_MINUTE_LIMIT:60}
+      redis-key-prefix: ${USER_FOLLOW_QUERY_REDIS_KEY_PREFIX:fc:user:}
+      cursor-ttl-seconds: ${USER_FOLLOW_QUERY_CURSOR_TTL_SECONDS:900}
+      cursor-key-base64: ${USER_FOLLOW_QUERY_CURSOR_KEY_BASE64:${CONTENT_PUBLIC_CURSOR_KEY_BASE64}}
+    follow:
+      ip-per-minute-limit: ${USER_FOLLOW_IP_PER_MINUTE_LIMIT:120}
+      user-per-minute-limit: ${USER_FOLLOW_USER_PER_MINUTE_LIMIT:60}
+      redis-key-prefix: ${USER_FOLLOW_REDIS_KEY_PREFIX:fc:user:}
     role-update:
       ip-per-minute-limit: ${USER_ROLE_UPDATE_IP_PER_MINUTE_LIMIT:120}
       user-per-minute-limit: ${USER_ROLE_UPDATE_USER_PER_MINUTE_LIMIT:60}

@@ -3,6 +3,97 @@
   "sourceSha256": "e3359e24fa1182287772810ac16968e83533022ed40f721f239ba3b58af01b21",
   "extensionSources": ["backend/docs/user-avatar-access.md"],
   "operations": {
+    "getFollowingFeed": {
+      "path": "/api/v1/feeds/following",
+      "method": "get",
+      "responses": {
+        "200": [],
+        "400": ["MALFORMED_REQUEST", "CURSOR_INVALID"],
+        "401": ["AUTHENTICATION_REQUIRED"],
+        "403": ["PERMISSION_DENIED", "ACCOUNT_RESTRICTED"],
+        "410": ["CURSOR_EXPIRED"],
+        "422": ["VALIDATION_ERROR"],
+        "429": ["RATE_LIMITED"],
+        "500": ["INTERNAL_ERROR"],
+        "503": ["DEPENDENCY_UNAVAILABLE"]
+      }
+    },
+    "listMyFollowing": {
+      "path": "/api/v1/me/following",
+      "method": "get",
+      "responses": {
+        "200": [],
+        "400": ["MALFORMED_REQUEST", "CURSOR_INVALID"],
+        "401": ["AUTHENTICATION_REQUIRED"],
+        "403": ["PERMISSION_DENIED", "ACCOUNT_RESTRICTED"],
+        "410": ["CURSOR_EXPIRED"],
+        "422": ["VALIDATION_ERROR"],
+        "429": ["RATE_LIMITED"],
+        "500": ["INTERNAL_ERROR"],
+        "503": ["DEPENDENCY_UNAVAILABLE"]
+      }
+    },
+    "unfollowUser": {
+      "path": "/api/v1/me/following/{userId}",
+      "method": "delete",
+      "responses": {
+        "204": [],
+        "400": ["MALFORMED_REQUEST"],
+        "401": ["AUTHENTICATION_REQUIRED"],
+        "403": ["PERMISSION_DENIED", "ACCOUNT_RESTRICTED"],
+        "422": ["VALIDATION_ERROR"],
+        "429": ["RATE_LIMITED"],
+        "500": ["INTERNAL_ERROR"],
+        "503": ["DEPENDENCY_UNAVAILABLE"]
+      }
+    },
+    "followUser": {
+      "path": "/api/v1/me/following/{userId}",
+      "method": "put",
+      "responses": {
+        "204": [],
+        "400": ["MALFORMED_REQUEST"],
+        "401": ["AUTHENTICATION_REQUIRED"],
+        "403": ["PERMISSION_DENIED", "ACCOUNT_RESTRICTED"],
+        "404": ["RESOURCE_NOT_FOUND"],
+        "422": ["VALIDATION_ERROR"],
+        "429": ["RATE_LIMITED"],
+        "500": ["INTERNAL_ERROR"],
+        "503": ["DEPENDENCY_UNAVAILABLE"]
+      }
+    },
+    "readNotificationBatch": {
+      "path": "/api/v1/me/notifications/read-batches",
+      "method": "post",
+      "responses": {
+        "200": [],
+        "400": ["MALFORMED_REQUEST"],
+        "401": ["AUTHENTICATION_REQUIRED"],
+        "403": ["PERMISSION_DENIED", "ACCOUNT_RESTRICTED"],
+        "404": ["RESOURCE_NOT_FOUND"],
+        "413": ["PAYLOAD_TOO_LARGE"],
+        "415": ["UNSUPPORTED_MEDIA_TYPE"],
+        "422": ["VALIDATION_ERROR"],
+        "429": ["RATE_LIMITED"],
+        "500": ["INTERNAL_ERROR"],
+        "503": ["DEPENDENCY_UNAVAILABLE"]
+      }
+    },
+    "readNotification": {
+      "path": "/api/v1/me/notifications/{notificationId}/read",
+      "method": "put",
+      "responses": {
+        "204": [],
+        "400": ["MALFORMED_REQUEST"],
+        "401": ["AUTHENTICATION_REQUIRED"],
+        "403": ["PERMISSION_DENIED", "ACCOUNT_RESTRICTED"],
+        "404": ["RESOURCE_NOT_FOUND"],
+        "422": ["VALIDATION_ERROR"],
+        "429": ["RATE_LIMITED"],
+        "500": ["INTERNAL_ERROR"],
+        "503": ["DEPENDENCY_UNAVAILABLE"]
+      }
+    },
     "getUnreadNotificationCount": {
       "path": "/api/v1/me/notifications/unread-count",
       "method": "get",

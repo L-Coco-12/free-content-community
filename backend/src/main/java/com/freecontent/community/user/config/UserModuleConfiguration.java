@@ -8,5 +8,6 @@ import org.springframework.context.annotation.Configuration;
 @EnableConfigurationProperties({PasswordChangeProperties.class,
         ProfileUpdateProperties.class, PublicUserQueryProperties.class, AvatarAccessProperties.class,
         SessionQueryProperties.class, SessionRevocationProperties.class, RoleQueryProperties.class,
-        AdminUserQueryProperties.class, UserRestrictionProperties.class, UserRoleUpdateProperties.class})
+        AdminUserQueryProperties.class, UserRestrictionProperties.class, UserRoleUpdateProperties.class,
+        UserFollowProperties.class, UserFollowQueryProperties.class})
 public class UserModuleConfiguration { }

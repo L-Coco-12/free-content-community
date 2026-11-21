@@ -68,7 +68,9 @@ public class PublicContentAssembler {
 
     public PublicContentView content(PublishedRow row, MediaReferences media, List<TagView> tags, PublicUserProfile author, long count, ContentLikeState likes, boolean viewerHasBookmarked) {
         requireAuthor(author);
-        var profile = new PublicUserView(author.id(), author.displayName(), author.bio(), avatars.url(author.id(),author.avatarAssetId()), author.createdAt().toInstant(ZoneOffset.UTC), count, 0);
+        var profile = new PublicUserView(author.id(), author.displayName(), author.bio(),
+                avatars.url(author.id(), author.avatarAssetId()), author.createdAt().toInstant(ZoneOffset.UTC),
+                count, author.followerCount());
         // 正文只用于详情及服务端摘要，不进入列表卡片；头像仅生成稳定地址，不访问存储。
         return new PublicContentView(row.id(), row.kind(), row.title(), summary.summarize(row.bodyMarkdown()), profile,
                 media.cover(), tags, row.firstPublishedAt().toInstant(ZoneOffset.UTC), row.publishedAt().toInstant(ZoneOffset.UTC),

@@ -19,6 +19,8 @@ import tools.jackson.databind.json.JsonMapper;
 @Component
 public class PublicContentCursor {
     private static final byte[] PURPOSE = "v1:GET:/api/v1/contents:firstPublishedAt,id:DESC".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] FOLLOWING_PURPOSE =
+            "v1:GET:/api/v1/feeds/following:firstPublishedAt,id:DESC".getBytes(StandardCharsets.UTF_8);
     private final PublicContentCursorProperties properties;
     private final JsonMapper json;
     private final Clock clock;
@@ -36,14 +38,19 @@ public class PublicContentCursor {
                           String snapshotAt, String expiresAt, String lastAt, String lastId, String authorId) { }
 
     public PublicContentListQuery open(String token, int limit, ContentKind kind, String tagId, String scope) {
-        return open(token, limit, kind, tagId, scope, null);
+        return open(token, limit, kind, tagId, scope, null, PURPOSE);
     }
 
     public PublicContentListQuery openForAuthor(String token, int limit, String authorId, String scope) {
-        return open(token, limit, null, null, scope, authorId);
+        return open(token, limit, null, null, scope, authorId, purpose(authorId));
     }
 
-    private PublicContentListQuery open(String token, int limit, ContentKind kind, String tagId, String scope, String authorId) {
+    public PublicContentListQuery openForFollowing(String token, int limit, String viewerId) {
+        return open(token, limit, null, null, viewerId, null, FOLLOWING_PURPOSE);
+    }
+
+    private PublicContentListQuery open(String token, int limit, ContentKind kind, String tagId, String scope,
+                                        String authorId, byte[] purpose) {
         if (token == null) {
             Instant snapshot = clock.instant().truncatedTo(ChronoUnit.MICROS);
             return new PublicContentListQuery(limit, kind, tagId, scope, snapshot, snapshot.plusSeconds(properties.ttlSeconds()), null, null, authorId);
@@ -56,7 +63,7 @@ public class PublicContentCursor {
             byte[] iv = Arrays.copyOfRange(packed, 0, 12);
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(128, iv));
-            cipher.updateAAD(purpose(authorId));
+            cipher.updateAAD(purpose);
             Payload payload = json.readValue(cipher.doFinal(Arrays.copyOfRange(packed, 12, packed.length)), Payload.class);
             if (payload == null || payload.limit() != limit || limit < 1 || limit > 50
                     || !Objects.equals(payload.kind(), kind == null ? null : kind.name())
@@ -75,6 +82,14 @@ public class PublicContentCursor {
     }
 
     public String next(PublicContentListQuery query, Instant lastAt, String lastId) {
+        return next(query, lastAt, lastId, purpose(query.authorId()));
+    }
+
+    public String nextForFollowing(PublicContentListQuery query, Instant lastAt, String lastId) {
+        return next(query, lastAt, lastId, FOLLOWING_PURPOSE);
+    }
+
+    private String next(PublicContentListQuery query, Instant lastAt, String lastId, byte[] purpose) {
         Payload payload = new Payload(query.limit(), query.kind() == null ? null : query.kind().name(), query.tagId(), query.scope(),
                 query.snapshotAt().toString(), query.expiresAt().toString(), lastAt.toString(), lastId, query.authorId());
         try {
@@ -82,7 +97,7 @@ public class PublicContentCursor {
             random.nextBytes(iv);
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(Cipher.ENCRYPT_MODE, key, new GCMParameterSpec(128, iv));
-            cipher.updateAAD(purpose(query.authorId()));
+            cipher.updateAAD(purpose);
             byte[] encrypted = cipher.doFinal(json.writeValueAsBytes(payload));
             byte[] packed = ByteBuffer.allocate(iv.length + encrypted.length).put(iv).put(encrypted).array();
             return "v1." + Base64.getUrlEncoder().withoutPadding().encodeToString(packed);

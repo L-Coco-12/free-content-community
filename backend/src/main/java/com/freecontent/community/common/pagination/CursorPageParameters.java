@@ -1,4 +1,4 @@
-package com.freecontent.community.content.browse.service;
+package com.freecontent.community.common.pagination;
 
 import com.freecontent.community.common.error.BusinessException;
 import com.freecontent.community.common.error.ErrorCode;
@@ -6,9 +6,9 @@ import com.freecontent.community.common.error.ProblemDetailResponse;
 import java.math.BigInteger;
 import java.util.List;
 
-/** 全站和作者列表共用的分页契约；参数校验发生在游标验证及配额计数之前。 */
-public final class PublicContentListParameters {
-    private PublicContentListParameters() { }
+/** 从请求字符串读取游标列表共用的页大小和长度限制。 */
+public final class CursorPageParameters {
+    private CursorPageParameters() { }
 
     public static int pageSize(String value) {
         if (value == null) return 20;

@@ -3,7 +3,7 @@ package com.freecontent.community.content.interaction.service.impl;
 import com.freecontent.community.auth.security.SessionPrincipal;
 import com.freecontent.community.common.error.*;
 import com.freecontent.community.content.browse.dto.ContentPageView;
-import com.freecontent.community.content.browse.service.PublicContentListParameters;
+import com.freecontent.community.common.pagination.CursorPageParameters;
 import com.freecontent.community.content.interaction.ratelimit.BookmarkQueryRateLimiter;
 import com.freecontent.community.content.interaction.cursor.BookmarkCursor;
 import com.freecontent.community.content.interaction.service.MyBookmarksService;
@@ -20,8 +20,8 @@ public class MyBookmarksServiceImpl implements MyBookmarksService {
     public MyBookmarksServiceImpl(BookmarkQueryRateLimiter limiter,MyBookmarksTransactionService transactions,BookmarkCursor cursors){this.limiter=limiter;this.transactions=transactions;this.cursors=cursors;}
     @Override public ContentPageView list(String cursor,String limit,SessionPrincipal actor,String sourceIp){
         if(actor==null || actor.user()==null)throw new BusinessException(ErrorCode.AUTHENTICATION_REQUIRED);
-        int size=PublicContentListParameters.pageSize(limit);
-        PublicContentListParameters.requireCursorLength(cursor);
+        int size=CursorPageParameters.pageSize(limit);
+        CursorPageParameters.requireCursorLength(cursor);
         var query=cursors.open(cursor,size,actor.user().id());
         limiter.acquire(actor.user().id(),sourceIp);
         try{return transactions.list(query,actor);}

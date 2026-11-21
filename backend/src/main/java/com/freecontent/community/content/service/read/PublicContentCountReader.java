@@ -1,6 +1,10 @@
 package com.freecontent.community.content.service.read;
 
 import com.freecontent.community.content.browse.mapper.PublicContentMapper;
+import com.freecontent.community.content.browse.mapper.PublicContentMapper.AuthorCount;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,5 +21,12 @@ public class PublicContentCountReader {
     @Transactional(propagation = Propagation.MANDATORY, readOnly = true)
     public long countByAuthor(String authorId) {
         return contents.countVisibleByAuthor(authorId);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY, readOnly = true)
+    public Map<String, Long> countByAuthors(List<String> authorIds) {
+        if (authorIds.isEmpty()) return Map.of();
+        return contents.countVisibleByAuthors(authorIds).stream()
+                .collect(Collectors.toMap(AuthorCount::authorId, AuthorCount::visibleCount));
     }
 }
