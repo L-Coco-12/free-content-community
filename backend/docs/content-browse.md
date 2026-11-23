@@ -45,7 +45,7 @@ bodyMarkdown、imageAssetIds、videoAssetId。可空字段仍显式返回 null�
   截取前 300 个 Unicode 码点，不截断 UTF-16 代理对；空正文返回空摘要。
 - tags 保留已发布修订的引用与顺序，返回标签当前名称、说明、状态和版本。停用标签仍返回 DISABLED，不因此隐藏已发布内容。
 - 作者公开作品数按真实可见的发布内容及素材条件计算，排除未公开、撤回、下架、已删除、未批准或素材未 READY 的内容。
-- [点赞](content-like.md)计数、[收藏](content-bookmark.md)标记和[作者粉丝数](user.md#关注用户)来自实际关系；评论数为占位值。
+- 点赞计数、收藏标记、作者粉丝数和可见评论数来自实际业务记录。[点赞](content-like.md) · [收藏](content-bookmark.md) · [关注](user.md#关注用户) · [评论](content-comments.md)
   取消收藏已接通，本人收藏列表留待后续接口接入。
 - 作者头像已接入[稳定读取地址](user-avatar-access.md)，无有效头像时为null；图片故障不使作品整体失败。
 

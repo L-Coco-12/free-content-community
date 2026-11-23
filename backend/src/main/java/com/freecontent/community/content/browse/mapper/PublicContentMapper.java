@@ -14,6 +14,7 @@ public interface PublicContentMapper {
     record RevisionAssetRow(String revisionId, String assetId, String usageType, int position, String ownerId, String scene, String state) { }
     record RevisionTagRow(String revisionId, String id, String name, String description, String status, int version) { }
     record AuthorCount(String authorId, long visibleCount) { }
+    record CommentCount(String contentId, long visibleCount) { }
 
     String COLUMNS = """
         c.id,c.author_id,c.kind,c.lifecycle,c.publication_status,c.published_revision_id,c.first_published_at,c.published_at,
@@ -65,6 +66,9 @@ public interface PublicContentMapper {
     @Select("<script> SELECT COUNT(*) " + PUBLISHED_JOIN + " WHERE c.author_id=#{author} AND " + VISIBLE + " </script>")
     long countVisibleByAuthor(@Param("author") String author);
 
+    @Select("<script> SELECT EXISTS (SELECT 1 " + PUBLISHED_JOIN + " WHERE c.id=#{id} AND " + VISIBLE + ") </script>")
+    boolean existsVisible(@Param("id") String contentId);
+
     @Select("<script> SELECT " + COLUMNS + PUBLISHED_JOIN + " WHERE " + VISIBLE + """
         <if test="kind != null"> AND c.kind=#{kind} </if>
         <if test="tag != null"> AND EXISTS(SELECT 1 FROM content_revision_tag t WHERE t.revision_id=r.id AND t.tag_id=#{tag}) </if>
@@ -105,4 +109,17 @@ public interface PublicContentMapper {
         GROUP BY c.author_id </script>
         """)
     List<AuthorCount> countVisibleByAuthors(@Param("authors") List<String> authors);
+
+    @Select("SELECT COUNT(*) FROM content_comment WHERE content_id=#{content} AND state='VISIBLE'")
+    long countVisibleComments(@Param("content") String contentId);
+
+    @Select("""
+            <script>
+            SELECT content_id, COUNT(*) AS visible_count FROM content_comment
+            WHERE state='VISIBLE' AND content_id IN
+            <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+            GROUP BY content_id
+            </script>
+            """)
+    List<CommentCount> countVisibleCommentsByContents(@Param("ids") List<String> contentIds);
 }

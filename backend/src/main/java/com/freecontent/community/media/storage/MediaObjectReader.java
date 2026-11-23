@@ -30,7 +30,10 @@ public class MediaObjectReader implements AutoCloseable {
         /** 本人和后台预览共用结果对象校验；调用方先完成授权、引用及READY检查。 */
         public static ObjectReference fromAsset(String assetId, String owner, MediaAsset asset, StorageProperties storage) {
             if (asset.getActualContentType() == null || asset.getActualSizeBytes() == null) throw unavailable();
-            String prefix = asset.getScene().equals("CONTENT_IMAGE") || asset.getScene().equals("AVATAR") ? "image/" : "video/";
+            String prefix = switch (asset.getScene()) {
+                case "CONTENT_IMAGE", "AVATAR", "REPORT_ATTACHMENT" -> "image/";
+                default -> "video/";
+            };
             if (!asset.getActualContentType().toLowerCase(Locale.ROOT).startsWith(prefix)) throw unavailable();
             var result = new ObjectReference(assetId, owner, asset.getReadyObjectKey(), asset.getReadyObjectEtag(),
                     asset.getReadyStorageId(), asset.getActualContentType(), asset.getActualSizeBytes());

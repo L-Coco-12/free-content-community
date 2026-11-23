@@ -59,6 +59,28 @@ mybatis-plus:
       id-type: assign_uuid
 
 app:
+  report:
+    submission:
+      ip-per-minute-limit: ${REPORT_SUBMISSION_IP_PER_MINUTE_LIMIT:120}
+      user-per-minute-limit: ${REPORT_SUBMISSION_USER_PER_MINUTE_LIMIT:60}
+      redis-key-prefix: ${REPORT_SUBMISSION_REDIS_KEY_PREFIX:fc:report:}
+    query:
+      ip-per-minute-limit: ${REPORT_QUERY_IP_PER_MINUTE_LIMIT:120}
+      user-per-minute-limit: ${REPORT_QUERY_USER_PER_MINUTE_LIMIT:60}
+      redis-key-prefix: ${REPORT_QUERY_REDIS_KEY_PREFIX:fc:report:}
+    admin-query:
+      ip-per-minute-limit: ${REPORT_ADMIN_QUERY_IP_PER_MINUTE_LIMIT:120}
+      user-per-minute-limit: ${REPORT_ADMIN_QUERY_USER_PER_MINUTE_LIMIT:60}
+      redis-key-prefix: ${REPORT_ADMIN_QUERY_REDIS_KEY_PREFIX:fc:report:}
+    attachment-access:
+      read-url-ttl-seconds: ${REPORT_ATTACHMENT_ACCESS_READ_URL_TTL_SECONDS:300}
+      ip-per-minute-limit: ${REPORT_ATTACHMENT_ACCESS_IP_PER_MINUTE_LIMIT:120}
+      user-per-minute-limit: ${REPORT_ATTACHMENT_ACCESS_USER_PER_MINUTE_LIMIT:60}
+      redis-key-prefix: ${REPORT_ATTACHMENT_ACCESS_REDIS_KEY_PREFIX:fc:report:}
+    decision:
+      ip-per-minute-limit: ${REPORT_DECISION_IP_PER_MINUTE_LIMIT:120}
+      user-per-minute-limit: ${REPORT_DECISION_USER_PER_MINUTE_LIMIT:60}
+      redis-key-prefix: ${REPORT_DECISION_REDIS_KEY_PREFIX:fc:report:}
   content:
     bookmark-query:
       ip-per-minute-limit: ${CONTENT_BOOKMARK_QUERY_IP_PER_MINUTE_LIMIT:120}
@@ -72,6 +94,22 @@ app:
       ip-per-minute-limit: ${CONTENT_LIKE_IP_PER_MINUTE_LIMIT:120}
       user-per-minute-limit: ${CONTENT_LIKE_USER_PER_MINUTE_LIMIT:60}
       redis-key-prefix: ${CONTENT_LIKE_REDIS_KEY_PREFIX:fc:content:}
+    comment:
+      ip-per-minute-limit: ${CONTENT_COMMENT_IP_PER_MINUTE_LIMIT:120}
+      user-per-minute-limit: ${CONTENT_COMMENT_USER_PER_MINUTE_LIMIT:60}
+      redis-key-prefix: ${CONTENT_COMMENT_REDIS_KEY_PREFIX:fc:content:}
+    comment-query:
+      ip-per-minute-limit: ${CONTENT_COMMENT_QUERY_IP_PER_MINUTE_LIMIT:120}
+      user-per-minute-limit: ${CONTENT_COMMENT_QUERY_USER_PER_MINUTE_LIMIT:60}
+      redis-key-prefix: ${CONTENT_COMMENT_QUERY_REDIS_KEY_PREFIX:fc:content:}
+    comment-admin-query:
+      ip-per-minute-limit: ${CONTENT_COMMENT_ADMIN_QUERY_IP_PER_MINUTE_LIMIT:120}
+      user-per-minute-limit: ${CONTENT_COMMENT_ADMIN_QUERY_USER_PER_MINUTE_LIMIT:60}
+      redis-key-prefix: ${CONTENT_COMMENT_ADMIN_QUERY_REDIS_KEY_PREFIX:fc:content:}
+    comment-hide:
+      ip-per-minute-limit: ${CONTENT_COMMENT_HIDE_IP_PER_MINUTE_LIMIT:120}
+      user-per-minute-limit: ${CONTENT_COMMENT_HIDE_USER_PER_MINUTE_LIMIT:60}
+      redis-key-prefix: ${CONTENT_COMMENT_HIDE_REDIS_KEY_PREFIX:fc:content:}
     public-media-access:
       read-url-ttl-seconds: ${CONTENT_PUBLIC_MEDIA_ACCESS_READ_URL_TTL_SECONDS:300}
       ip-per-minute-limit: ${CONTENT_PUBLIC_MEDIA_ACCESS_IP_PER_MINUTE_LIMIT:120}
@@ -96,6 +134,10 @@ app:
       ip-per-minute-limit: ${CONTENT_ADMIN_QUERY_IP_PER_MINUTE_LIMIT:120}
       user-per-minute-limit: ${CONTENT_ADMIN_QUERY_USER_PER_MINUTE_LIMIT:60}
       redis-key-prefix: ${CONTENT_ADMIN_QUERY_REDIS_KEY_PREFIX:fc:content:}
+    moderation-query:
+      ip-per-minute-limit: ${CONTENT_MODERATION_QUERY_IP_PER_MINUTE_LIMIT:120}
+      user-per-minute-limit: ${CONTENT_MODERATION_QUERY_USER_PER_MINUTE_LIMIT:60}
+      redis-key-prefix: ${CONTENT_MODERATION_QUERY_REDIS_KEY_PREFIX:fc:content:}
     restoration:
       ip-per-minute-limit: ${CONTENT_RESTORATION_IP_PER_MINUTE_LIMIT:60}
       user-hourly-limit: ${CONTENT_RESTORATION_USER_HOURLY_LIMIT:100}

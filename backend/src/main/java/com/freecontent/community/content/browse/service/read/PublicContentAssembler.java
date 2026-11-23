@@ -66,7 +66,8 @@ public class PublicContentAssembler {
         if (author == null || author.createdAt() == null || author.displayName() == null || author.bio() == null) throw unavailable();
     }
 
-    public PublicContentView content(PublishedRow row, MediaReferences media, List<TagView> tags, PublicUserProfile author, long count, ContentLikeState likes, boolean viewerHasBookmarked) {
+    public PublicContentView content(PublishedRow row, MediaReferences media, List<TagView> tags, PublicUserProfile author,
+                                     long count, ContentLikeState likes, boolean viewerHasBookmarked, long commentCount) {
         requireAuthor(author);
         var profile = new PublicUserView(author.id(), author.displayName(), author.bio(),
                 avatars.url(author.id(), author.avatarAssetId()), author.createdAt().toInstant(ZoneOffset.UTC),
@@ -74,7 +75,8 @@ public class PublicContentAssembler {
         // 正文只用于详情及服务端摘要，不进入列表卡片；头像仅生成稳定地址，不访问存储。
         return new PublicContentView(row.id(), row.kind(), row.title(), summary.summarize(row.bodyMarkdown()), profile,
                 media.cover(), tags, row.firstPublishedAt().toInstant(ZoneOffset.UTC), row.publishedAt().toInstant(ZoneOffset.UTC),
-                row.publishedRevisionId(), likes.likeCount(), 0, likes.viewerHasLiked(), viewerHasBookmarked, row.bodyMarkdown(), media.images(), media.video());
+                row.publishedRevisionId(), likes.likeCount(), commentCount, likes.viewerHasLiked(), viewerHasBookmarked,
+                row.bodyMarkdown(), media.images(), media.video());
     }
 
     private BusinessException missing() { return new BusinessException(ErrorCode.RESOURCE_NOT_FOUND); }

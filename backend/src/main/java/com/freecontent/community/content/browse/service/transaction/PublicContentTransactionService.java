@@ -31,6 +31,7 @@ public class PublicContentTransactionService {
         var author = users.read(row.authorId());
         assembler.requireAuthor(author);
         var state=likes.readAll(List.of(contentId),viewerId).getOrDefault(contentId,ContentLikeState.none(contentId));
-        return assembler.content(row, media, tags, author, contents.countVisibleByAuthor(author.id()),state,bookmarks.readAll(List.of(contentId),viewerId).contains(contentId));
+        return assembler.content(row, media, tags, author, contents.countVisibleByAuthor(author.id()), state,
+                bookmarks.readAll(List.of(contentId), viewerId).contains(contentId), contents.countVisibleComments(contentId));
     }
 }

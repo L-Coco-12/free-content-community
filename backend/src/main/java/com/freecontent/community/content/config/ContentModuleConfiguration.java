@@ -1,5 +1,9 @@
 package com.freecontent.community.content.config;
 
+import com.freecontent.community.content.comment.config.AdminCommentQueryProperties;
+import com.freecontent.community.content.comment.config.CommentHideProperties;
+import com.freecontent.community.content.comment.config.CommentWriteProperties;
+import com.freecontent.community.content.comment.config.PublicCommentQueryProperties;
 import com.freecontent.community.content.review.config.AdminReviewMediaPreviewProperties;
 import com.freecontent.community.content.review.config.AdminReviewQueryProperties;
 import com.freecontent.community.content.review.config.ContentReviewSubmissionProperties;
@@ -13,6 +17,7 @@ import com.freecontent.community.content.workspace.config.ContentDeletionPropert
 import com.freecontent.community.content.workspace.config.ContentRestorationProperties;
 import com.freecontent.community.content.moderation.config.AdminContentQueryProperties;
 import com.freecontent.community.content.moderation.config.ContentTakeDownProperties;
+import com.freecontent.community.content.moderation.config.ModerationActionQueryProperties;
 import com.freecontent.community.content.workspace.config.ContentMediaPreviewProperties;
 import com.freecontent.community.content.interaction.config.ContentLikeProperties;
 import com.freecontent.community.content.interaction.config.ContentBookmarkProperties;
@@ -32,9 +37,14 @@ import org.springframework.context.annotation.Configuration;
         ContentRestorationProperties.class,
         AdminContentQueryProperties.class,
         ContentTakeDownProperties.class,
+        ModerationActionQueryProperties.class,
         ContentMediaPreviewProperties.class,
         ContentQueryProperties.class,
         ContentLikeProperties.class,
+        CommentWriteProperties.class,
+        PublicCommentQueryProperties.class,
+        AdminCommentQueryProperties.class,
+        CommentHideProperties.class,
         ContentBookmarkProperties.class,
         BookmarkQueryProperties.class,
         ContentReviewSubmissionProperties.class,

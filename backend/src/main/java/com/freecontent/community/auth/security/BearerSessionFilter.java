@@ -80,7 +80,9 @@ public class BearerSessionFilter extends OncePerRequestFilter {
     private BusinessException contractAuthenticationFailure(HttpServletRequest request, BusinessException failure) {
         String requestPath = request.getRequestURI().substring(request.getContextPath().length());
         if ("GET".equals(request.getMethod()) && (requestPath.equals("/api/v1/contents")
-                || requestPath.matches("/api/v1/contents/[^/]+(?:/media/[^/]+/access)?") || requestPath.matches("/api/v1/users/[^/]+(?:/(?:contents|avatar))?"))
+                || requestPath.matches("/api/v1/contents/[^/]+(?:/comments|/media/[^/]+/access)?")
+                || requestPath.matches("/api/v1/users/[^/]+(?:/(?:contents|avatar))?")
+                || requestPath.matches("/api/v1/comments/[^/]+(?:/replies)?"))
                 && (failure.errorCode() == ErrorCode.ACCOUNT_RESTRICTED || failure.errorCode() == ErrorCode.EMAIL_VERIFICATION_REQUIRED)) {
             return new BusinessException(ErrorCode.AUTHENTICATION_REQUIRED);
         }

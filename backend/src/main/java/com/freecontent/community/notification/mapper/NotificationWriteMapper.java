@@ -26,6 +26,21 @@ public interface NotificationWriteMapper {
                           @Param("followId") String followId, @Param("body") String body,
                           @Param("now") LocalDateTime now);
 
+    @Insert("""
+            INSERT INTO user_notification(id,recipient_id,source_event_id,type,title,body,target_type,target_id,read_at,created_at)
+            VALUES(#{id},#{recipient},#{replyId},'COMMENT_REPLY','新的评论回复','有人回复了你的评论。','COMMENT',#{replyId},NULL,#{now})
+            """)
+    int insertCommentReply(@Param("id") String id, @Param("recipient") String recipient,
+                           @Param("replyId") String replyId, @Param("now") LocalDateTime now);
+
+    @Insert("""
+            INSERT INTO user_notification(id,recipient_id,source_event_id,type,title,body,target_type,target_id,read_at,created_at)
+            VALUES(#{id},#{recipient},#{reportId},'REPORT_RESULT','举报已处理',#{body},'REPORT',#{reportId},NULL,#{now})
+            """)
+    int insertReportResult(@Param("id") String id, @Param("recipient") String recipient,
+                           @Param("reportId") String reportId, @Param("body") String body,
+                           @Param("now") LocalDateTime now);
+
     @Update("""
             UPDATE user_notification SET read_at=#{now}
             WHERE id=#{id} AND recipient_id=#{recipient} AND read_at IS NULL

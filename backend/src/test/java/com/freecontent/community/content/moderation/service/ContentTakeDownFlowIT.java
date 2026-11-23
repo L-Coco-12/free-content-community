@@ -77,7 +77,7 @@ class ContentTakeDownFlowIT {
     @DynamicPropertySource
     static void isolated(DynamicPropertyRegistry registry) {
         for (String scope : List.of("content.take-down", "auth.login", "content.admin-query", "content.admin-review-query", "content.query", "content.draft-save",
-                "content.review-decision","content.review-submission","content.restoration","content.deletion","content.draft-creation","content.publication-republish","content.publication-withdrawal"))
+                "content.review-decision","content.review-submission","content.restoration","content.deletion","content.draft-creation","content.publication-republish","content.publication-withdrawal","content.moderation-query"))
             registry.add("app." + scope + ".redis-key-prefix", () -> PREFIX);
     }
     @AfterEach
@@ -104,7 +104,8 @@ class ContentTakeDownFlowIT {
     void moderatorTakesDownPublishedContentAndReceivesAnActionResult() throws Exception {
         var moderator = account("MODERATOR"); var author = account(null); var seed = content(author,"ACTIVE","PUBLISHED");
         var before = jdbc.queryForMap("SELECT * FROM content_revision WHERE id=?",seed.revision());
-        var response = takeDown(seed.content(),7,"SPAM","经核对存在违规营销，需整改后重审。",id(),token(moderator));
+        String token = token(moderator);
+        var response = takeDown(seed.content(),7,"SPAM","经核对存在违规营销，需整改后重审。",id(),token);
         assertEquals(201,response.statusCode(),response.body());
         assertEquals("CONTENT",JsonPath.read(response.body(),"$.data.targetType")); assertEquals(seed.content(),JsonPath.read(response.body(),"$.data.targetId"));
         assertEquals("TAKE_DOWN",JsonPath.read(response.body(),"$.data.action")); assertEquals(moderator.getId(),JsonPath.read(response.body(),"$.data.operatorId"));
@@ -113,6 +114,13 @@ class ContentTakeDownFlowIT {
         assertEquals("ACTIVE",jdbc.queryForObject("SELECT lifecycle FROM community_content WHERE id=?",String.class,seed.content()));
         assertEquals(before,jdbc.queryForMap("SELECT * FROM content_revision WHERE id=?",seed.revision()));
         assertEquals("no-store",response.headers().firstValue("Cache-Control").orElseThrow());
+        String actionId = JsonPath.read(response.body(), "$.data.id");
+        var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1/admin/moderation-actions/" + actionId))
+                .timeout(Duration.ofSeconds(20)).header("Authorization", "Bearer " + token).GET().build();
+        var persisted = client.send(request, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, persisted.statusCode(), persisted.body());
+        assertEquals(JsonPath.<Map<String, Object>>read(response.body(), "$.data"),
+                JsonPath.<Map<String, Object>>read(persisted.body(), "$.data"));
     }
     @ParameterizedTest
     @CsvSource({"ACTIVE,PUBLISHED,DRAFT", "ACTIVE,WITHDRAWN,IN_REVIEW", "DELETED,PUBLISHED,DRAFT", "DELETED,WITHDRAWN,IN_REVIEW"})

@@ -53,7 +53,9 @@ public class SecurityConfiguration {
                         .requestMatchers(HttpMethod.GET, BearerSessionFilter.PUBLIC_READ_PATHS.toArray(String[]::new)).permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/contents", "/api/v1/contents/{contentId}",
                                 "/api/v1/users/{userId}", "/api/v1/users/{userId}/contents",
-                                "/api/v1/users/{userId}/avatar",
+                                "/api/v1/users/{userId}/avatar", "/api/v1/comments/{commentId}",
+                                "/api/v1/comments/{commentId}/replies",
+                                "/api/v1/contents/{contentId}/comments",
                                 "/api/v1/contents/{contentId}/media/{assetId}/access").permitAll()
                         .requestMatchers("/actuator/health", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/api/v1/admin/**").access(adminAuthorization)

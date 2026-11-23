@@ -41,6 +41,8 @@ public class PublicContentSummaryReader {
         var profiles=knownAuthors==null?users.readAll(authors).stream().collect(Collectors.toMap(PublicUserProfile::id,Function.identity())):knownAuthors;
         var counts=contents.countVisibleByAuthors(authors).stream().collect(Collectors.toMap(AuthorCount::authorId,AuthorCount::visibleCount));
         var ids=rows.stream().map(PublishedRow::id).toList();
+        var commentCounts = contents.countVisibleCommentsByContents(ids).stream()
+                .collect(Collectors.toMap(CommentCount::contentId, CommentCount::visibleCount));
         var likeStates=likes.readAll(ids,viewerId);
         var bookmarkedIds=bookmarks.readAll(ids,viewerId);
         List<PublicContentSummaryView> items=new ArrayList<>();
@@ -50,7 +52,8 @@ public class PublicContentSummaryReader {
                 var media=assembler.media(row,assets.getOrDefault(row.revisionId(),List.of()));
                 var labels=assembler.tags(tags.getOrDefault(row.revisionId(),List.of()));
                 items.add(PublicContentSummaryView.from(assembler.content(row,media,labels,profiles.get(row.authorId()),counts.getOrDefault(row.authorId(),0L),
-                        likeStates.getOrDefault(row.id(),ContentLikeState.none(row.id())),bookmarkedIds.contains(row.id()))));
+                        likeStates.getOrDefault(row.id(),ContentLikeState.none(row.id())),bookmarkedIds.contains(row.id()),
+                        commentCounts.getOrDefault(row.id(), 0L))));
             }catch(BusinessException ex){
                 if(ex.errorCode()!=ErrorCode.RESOURCE_NOT_FOUND && ex.errorCode()!=ErrorCode.DEPENDENCY_UNAVAILABLE)throw ex;
             }
